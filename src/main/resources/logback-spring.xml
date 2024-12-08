@@ -5,9 +5,9 @@
         </encoder>
     </appender>
     
-    <property name="LOG_DIR" value="/logs" />
+    <property name="LOG_DIR" value="logs" />
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-      <file>${LOG_DIR}/test-logs.log</file>
+      <file>${LOG_DIR}/kafkaEventScheduler.log</file>
       <append>true</append>
       <encoder>
           <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
