@@ -19,10 +19,10 @@ public class Scheduler {
 	@Autowired
 	private KafkaEventProducer kafkaProducer;
 	
-	@Scheduled(cron = "15 * * * * *") // Run every hour at the top of the hour
+	@Scheduled(cron = "15 * * * * *") // Run every 15 seconds
 	public void sendTestEvent()
 	{
-		logger.info("MADHU---Running every 15 seconds");
+		logger.info("Scheduler---Running every 15 seconds");
 		kafkaProducer.sendTestEvent(kafkaTopicName, "TestEventMessage");
 	}
 }
