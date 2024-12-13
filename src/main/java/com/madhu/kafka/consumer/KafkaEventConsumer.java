@@ -3,8 +3,6 @@ package com.madhu.kafka.consumer;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
-import lombok.Data;
-
 @Component
 public class KafkaEventConsumer {
 

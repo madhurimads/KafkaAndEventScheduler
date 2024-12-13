@@ -13,3 +13,4 @@ logging:
 kafka:
     topic:
        name: testTopic
+cronExprEvery15secs: "05 * * * * *"

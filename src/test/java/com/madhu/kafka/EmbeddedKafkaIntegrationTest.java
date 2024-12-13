@@ -1,48 +1,91 @@
 package com.madhu.kafka;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.KafkaMessageListenerContainer;
+import org.springframework.kafka.listener.MessageListener;
+import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
-import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.kafka.test.utils.ContainerTestUtils;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.junit4.SpringRunner;
 
-import com.madhu.kafka.consumer.KafkaEventConsumer;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.madhu.kafka.producer.KafkaEventProducer;
 
-@SpringBootTest(classes = {KafkaEventConsumer.class, KafkaEventProducer.class, KafkaTemplate.class})
-@RunWith(SpringRunner.class)
-@DirtiesContext
-@EmbeddedKafka(partitions = 1, brokerProperties = { "listeners=PLAINTEXT://localhost:9093", 
-		"port=9093",  
-		"bootstrapServersProperty=spring.kafka.bootstrap-servers"})
-@TestPropertySource(properties = "spring.kafka.consumer.auto-offset-reset = earliest")
+@EmbeddedKafka(partitions=1, brokerProperties= {"listeners=PLAINTEXT://localhost:9092", "port=9092"})
+@TestPropertySource(locations = "classpath:application-test.yml")
+@SpringBootTest(properties = "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EmbeddedKafkaIntegrationTest {
 
+    private BlockingQueue<ConsumerRecord<String, String>> records;
+
+    private KafkaMessageListenerContainer<String, String> container;
+
     @Autowired
-    private KafkaEventConsumer consumer;
+    private EmbeddedKafkaBroker embeddedKafkaBroker;
 
     @Autowired
     private KafkaEventProducer producer;
-    
-    @Autowired
-    private KafkaTemplate<String, String> kafkaTemplate;
 
-    @Value("${test.topic}")
-    private String topic;
-    
+    //@Value("${embeddedKafka.topic.name}")
+    private String embeddedKafkaBrokerTopicName = "embeddedKafkaBrokerTopic";
 
+    @BeforeAll
+    void setUp() {
+        DefaultKafkaConsumerFactory<String, String> consumerFactory = new DefaultKafkaConsumerFactory<>(getConsumerProperties());
+        ContainerProperties containerProperties = new ContainerProperties(embeddedKafkaBrokerTopicName);
+        container = new KafkaMessageListenerContainer<>(consumerFactory, containerProperties);
+        records = new LinkedBlockingQueue<>();
+        container.setupMessageListener((MessageListener<String, String>) records::add);
+        container.start();
+        ContainerTestUtils.waitForAssignment(container, embeddedKafkaBroker.getPartitionsPerTopic());
+    }
+
+    private Map<String, Object> getConsumerProperties() {
+        return Map.of(
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, embeddedKafkaBroker.getBrokersAsString(),
+                ConsumerConfig.GROUP_ID_CONFIG, "consumer",
+                ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true",
+                ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "10",
+                ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "60000",
+                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    }
+
+    @AfterAll
+    void tearDown() {
+        container.stop();
+    }
+    
     @Test
-    public void givenEmbeddedKafkaBroker_whenSendingWithSimpleProducer_thenMessageReceived() 
-      throws Exception {
-        String data = "Sending with our own simple KafkaProducer";        
-        producer.sendTestEvent(topic, data);       
-        assertEquals(consumer.getPayload(),(data));
+    void testSendEventToKafka() throws InterruptedException, JsonProcessingException {
+    	//Send a test event to the embedded kafka broker
+        producer.sendTestEvent(embeddedKafkaBrokerTopicName, "EventMessageFromJunit");
+        
+        // Read the message with a test consumer from Embedded Kafka and assert its properties
+        ConsumerRecord<String, String> record = records.poll(500, TimeUnit.MILLISECONDS);
+        assertNotNull(record);
+        assertEquals(embeddedKafkaBrokerTopicName, record.topic());
+        assertEquals("EventMessageFromJunit", record.value());
     }
 }
