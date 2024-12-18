@@ -1,0 +1,16 @@
+spring:
+   application:
+       name: demo
+   kafka:
+       bootstrap-servers-config: localhost:9092
+       consumer:
+            group-id: my-group-id
+logging:
+   level:
+       org:
+          springframework:
+                 web: DEBUG
+kafka:
+    topic:
+       name: testTopic
+cronExprEvery15secs: "05 * * * * *"

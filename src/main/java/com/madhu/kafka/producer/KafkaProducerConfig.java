@@ -1,5 +1,8 @@
 package com.madhu.kafka.producer;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,8 +12,9 @@ import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
-import java.util.HashMap;
-import java.util.Map;
+
+import com.madhu.kafka.serde.TransactionSerializer;
+import com.madhu.kafka.transaction.Transaction;
 @Configuration
 @EnableKafka
 public class KafkaProducerConfig {
@@ -29,5 +33,19 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, String> kafkaTemplate() {
         return new KafkaTemplate<>(producerFactory());
+ }
+    
+    @Bean
+    public ProducerFactory<String, Transaction> producerFactoryTransaction() {
+        Map<String, Object> configProps = new HashMap<>();
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServersConfig);
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, TransactionSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, TransactionSerializer.class);
+        return new DefaultKafkaProducerFactory<>(configProps);
+    }
+    
+    @Bean
+    public KafkaTemplate<String, Transaction> kafkaTemplateTransaction() {
+        return new KafkaTemplate<>(producerFactoryTransaction());
  }
 }

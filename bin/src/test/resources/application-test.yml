@@ -1,0 +1,8 @@
+spring:
+   kafka:
+       bootstrap-servers-config: localhost:9092
+       consumer:
+            group-id: my-group-id
+embeddedKafka:
+      topic: 
+           name: embeddedKafkaBrokerTopic
