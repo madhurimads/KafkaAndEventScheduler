@@ -1,0 +1,73 @@
+import gov.irs.fatca.qi.domain.service.PiiServiceCallWrapper;
+import gov.irs.fatca.qi.exception.QIUIException;
+import gov.irs.fatca.qi.service.impl.PiiInfoServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class PiiInfoServiceImplTest {
+
+    private RestTemplate restTemplate;
+    private PiiInfoServiceImpl piiInfoService;
+
+    @BeforeEach
+    void setup() {
+        restTemplate = mock(RestTemplate.class);
+        piiInfoService = new PiiInfoServiceImpl();
+        piiInfoService.restTemplate = restTemplate;
+
+        // set mock URLs for @Value properties
+        piiInfoService.bslHost = "http://mock-primary-host";
+        piiInfoService.bslHost2 = "http://mock-secondary-host";
+    }
+
+    @Test
+    void testGetUserPiiInfo_HappyPath() {
+        // given
+        String sadiUUID = "uuid-123";
+        Map<String, String> mockAttributes = new HashMap<>();
+        mockAttributes.put("firstName", "John");
+        mockAttributes.put("lastName", "Doe");
+
+        PiiServiceCallWrapper mockResponse = new PiiServiceCallWrapper();
+        mockResponse.setPiiAttributes(mockAttributes);
+
+        when(restTemplate.postForObject(
+                ArgumentMatchers.contains("/pii-user-info"),
+                any(),
+                eq(PiiServiceCallWrapper.class))
+        ).thenReturn(mockResponse);
+
+        // when
+        Map<String, String> result = piiInfoService.getUserPiiInfo(sadiUUID);
+
+        // then
+        assertNotNull(result);
+        assertEquals("John", result.get("firstName"));
+        assertEquals("Doe", result.get("lastName"));
+    }
+
+@Test
+void testGetUserPiiInfo_When500ErrorCode_ThrowsQIUIException() {
+    String uuid = "uuid-error";
+
+    PiiServiceCallWrapper mockResponse = new PiiServiceCallWrapper();
+    mockResponse.setErrorCode(500);
+
+    when(restTemplate.postForObject(anyString(), any(), eq(PiiServiceCallWrapper.class)))
+            .thenReturn(mockResponse);
+
+    QIUIException ex = assertThrows(QIUIException.class, () -> {
+        piiInfoService.getUserPiiInfo(uuid);
+    });
+
+    assertEquals("SADI_UNEXPECTED_ERROR", ex.getErrorCode().getCode());
+}
+}
