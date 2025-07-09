@@ -1,0 +1,91 @@
+package gov.irs.fatca.qi.controller.certification;
+
+import jakarta.annotation.PostConstruct;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.SessionAttributes;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import gov.irs.fatca.qi.cert.strategy.util.ResponseEvaluationUtils;
+import gov.irs.fatca.qi.domain.cert.disp.Element;
+import gov.irs.fatca.qi.domain.cert.disp.QuestionnairePage;
+import gov.irs.fatca.qi.domain.cert.disp.ResponseEvaluator;
+import gov.irs.fatca.qi.domain.entity.CcgMemberDetail;
+import gov.irs.fatca.qi.domain.entity.ReviewMode;
+import gov.irs.fatca.qi.service.CertificationService;
+import gov.irs.fatca.qi.ui.security.AuthenticatedUserRoleUtils;
+
+@Controller
+@SessionAttributes({ "reviewMode", "ccgMemberDetail" })
+public class CCGMemberQiCertificationAppendixIIIController {
+    
+    protected Logger logger = LoggerFactory.getLogger(CCGMemberQiCertificationAppendixIIIController.class);
+
+    // TODO update to v4 after confirmation on styling
+    public static final String TEMPLATE = "cert-page-v3-for-ccmembers";
+    private static final int TOTAL_STEPS = 2;
+    public static final String LANDING_PAGE = "redirect:/secure/qi-landing/";
+    
+    public static final String IS_LEAD = "isLead";
+
+    // CCG members list URL
+    private static final String CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST = CertificationCCGMembersController.SECURE_CERT_QI_COMPLIANCE_GROUP_MEMBER_URL;
+    private static final String CCG_MEMBER_DETAIL = "ccgMemberDetail";
+    private static final String REVIEW_MODE = "reviewMode";
+    
+    // Review Mode Completion Key
+    public static final String PART_SEVEN_COMPLETE = "MemberPart7Complete";
+
+    @Autowired
+    CertificationService certificationService;
+
+    private CertControllerUtils ccu;
+    
+    private ResponseEvaluationUtils responseEvaluationUtils;
+
+    @PostConstruct
+    public void init() {
+        ccu = new CertControllerUtils(TOTAL_STEPS);
+        responseEvaluationUtils = new ResponseEvaluationUtils();
+    }
+    
+    @Value("${ccg.part5.year.eligible}")
+    private int yearForPartFive;  
+
+   
+    
+    
+    
+    public static final String QI_CCG_MEMBER_P8_INFO_FORM_URL = "/secure/cert/ccg-member/qi/part7/information-on-forms-1042-S/";
+    public static final String QI_CCG_MEMBER_P8_INFO_FORM_PAGE_STEP = "1";
+    public static final String QI_CCG_MEMBER_P8_INFO_FORM_PAGEID = "109";
+    
+    @RequestMapping(value = QI_CCG_MEMBER_P8_INFO_FORM_URL, method = RequestMethod.GET)
+    public String getPart8Page1(Model model,
+    		@ModelAttribute("reviewMode") ReviewMode reviewMode,
+    		@ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+    	
+    	if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+    		return LANDING_PAGE;
+    	String pageId = QI_CCG_MEMBER_P8_INFO_FORM_PAGEID;
+    	
+    	QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+    	ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P8_INFO_FORM_PAGE_STEP, QI_CCG_MEMBER_P8_INFO_FORM_URL);
+    	model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+    	model.addAttribute(REVIEW_MODE, reviewMode);
+    	model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+		model.addAttribute("displayAppData", ccu.getDisplayAppData(page));
+    	return TEMPLATE;
+    }
+
+}
