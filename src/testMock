@@ -1,0 +1,58 @@
+package gov.irs.fatca.qi.controller.certification;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.MockedStatic;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import gov.irs.fatca.qi.domain.cert.disp.QuestionnairePage;
+import gov.irs.fatca.qi.domain.entity.ReviewMode;
+import gov.irs.fatca.qi.service.CertificationService;
+import gov.irs.fatca.qi.ui.security.AuthenticatedUserRoleUtils;
+
+@WebMvcTest(controllers = CCGMemberQiCertificationAppendixIIIController.class)
+@ExtendWith(MockitoExtension.class)
+public class CCGMemberQiCertificationAppendixIIIControllerTest {
+	
+	@Autowired
+	private MockMvc mockMvc;
+	
+	@MockitoBean
+	CertificationService certificationServiceMock;
+	
+	@MockitoBean
+	CertControllerUtils ccuMock;
+	
+	@MockitoBean
+	QuestionnairePage qPageMock;
+
+	@Test
+	public void testGetPart8Page1() throws Exception {
+		
+		try (MockedStatic<AuthenticatedUserRoleUtils> mockedAuthenticatedUserRoleUtils = mockStatic(AuthenticatedUserRoleUtils.class)) {
+			mockedAuthenticatedUserRoleUtils.when(AuthenticatedUserRoleUtils::isSelectedUserLockedOutOfCertQuestionaire).thenReturn(false);
+			
+			ReviewMode reviewModeMock = new ReviewMode();			
+			when(certificationServiceMock.getQuestionnairePage(any(), any())).thenReturn(qPageMock);
+			doNothing().when(ccuMock).addRequiredAttributes(any(), any(), any(), any());			
+			
+			this.mockMvc.perform(get(CCGMemberQiCertificationAppendixIIIController.QI_CCG_MEMBER_P8_INFO_FORM_URL)
+					.flashAttr("reviewMode", reviewModeMock))
+					.andDo(print())
+					.andExpect(model().attribute("reviewMode", reviewModeMock))
+					.andExpect(view().name(CCGMemberQiCertificationAppendixIIIController.TEMPLATE));
+		}
+	}
+
+}
