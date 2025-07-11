@@ -1,81 +1,141 @@
- // mock mapType
-        JavaType mockMapType = new ObjectMapper().getTypeFactory().constructCollectionType(List.class, AttachmentInfo.class);
-        ReflectionTestUtils.setField(certificationService, "mapType", mockMapType);
+package gov.irs.fatca.qi.service.impl;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.springframework.core.io.Resource;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.converter.FormHttpMessageConverter;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.ResourceHttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import gov.irs.fatca.qi.domain.Error;
+import gov.irs.fatca.qi.domain.certification.CertFileRequestContext;
+import gov.irs.fatca.qi.domain.certification.enums.CertFileRequestContextEnum;
+import gov.irs.fatca.qi.domain.form14345.AttachmentInfo;
+import gov.irs.fatca.qi.exception.WebServiceClientException;
+import gov.irs.fatca.qi.service.CertificationFileUploadServiceClient;
+import gov.irs.fatca.qi.strategy.util.HttpParamUtil;
+
+@Component
+public class CertificationFileUploadServiceClientImpl implements CertificationFileUploadServiceClient {
+
+    protected Logger logger = LoggerFactory.getLogger(CertificationFileUploadServiceClientImpl.class);
+
+    @Value("${bsl.host}")
+    private String bslHost;
+    
+    @Value("${bsl.host2}")
+    private String bslHost2;
+
+    @Value("${idt.host}")
+    private String idtHost;
+    
+    @Value("${idt.host2}")
+    private String idtHost2;
+
+    @Autowired
+    @Qualifier("certRestTemplate")
+    RestTemplate certRestTemplate;
+    
+    private TypeReference<List<AttachmentInfo>> mapType = new TypeReference<List<AttachmentInfo>>() {
+    };
+    
+    @Override
+    public AttachmentInfo uploadCertAttachment(String Id, CertFileRequestContextEnum certFileUploadContext, AttachmentInfo attachmentInfo,
+            String sadiId) throws Throwable {
+
+        HttpMessageConverter<Object> jackson = new MappingJackson2HttpMessageConverter();
+        HttpMessageConverter<Resource> resource = new ResourceHttpMessageConverter();
+        FormHttpMessageConverter formHttpMessageConverter = new FormHttpMessageConverter();
+        formHttpMessageConverter.addPartConverter(jackson);
+        formHttpMessageConverter.addPartConverter(resource);
+
+        certRestTemplate = new RestTemplate(Arrays.asList(jackson, resource, formHttpMessageConverter));
+        
+        HttpParamUtil.httpParametersValidator(Id, certFileUploadContext.getCode(), sadiId);
+        Object jsonObject;
+        try {
+            jsonObject = certRestTemplate.postForObject(
+                    idtHost + "/UploadCertFileService?Id={Id}&certFileUploadContext={certFileUploadContext}&sadiId={sadiId}",
+                    attachmentInfo, Object.class, Id, certFileUploadContext.getCode(), sadiId);
+        }catch(Exception e) {
+            jsonObject = certRestTemplate.postForObject(
+                    idtHost2 + "/UploadCertFileService?Id={Id}&certFileUploadContext={certFileUploadContext}&sadiId={sadiId}",
+                    attachmentInfo, Object.class, Id, certFileUploadContext.getCode(), sadiId);
+        }
+
+        AttachmentInfo file = new AttachmentInfo();
+        ObjectMapper mapper = new ObjectMapper();
+        String jsonInstring = mapper.writeValueAsString(jsonObject);
+        try {
+            file = mapper.readValue(jsonInstring, AttachmentInfo.class);
+        } catch (IOException e) {
+        	// If returned object is not in AttachmentInfo type, it might be virus scan failure error sent by IDT,
+        	// let's convert
+        	Error error = mapper.readValue(jsonInstring, Error.class);
+            throw new WebServiceClientException(error.getErrorCategory(), error.getErrorCode(), error.getErrorDescription(),
+                    error.getMessageId(), e);
+        }
+        
+        return file;
     }
+    
+    @Override
+    public List<AttachmentInfo> getCertificationAttachments(String Id, CertFileRequestContextEnum getCertFileContext) {
 
-@Test
-    void testGetCertificationAttachments_successFromPrimary() throws Exception {
-        // Arrange
-        String id = "123";
-        CertFileRequestContextEnum contextEnum = CertFileRequestContextEnum.RETRIEVE;
-        List<AttachmentInfo> expectedList = List.of(new AttachmentInfo("file1.pdf"));
+        CertFileRequestContext requestContext = new CertFileRequestContext();
+        requestContext.setId(Id);
+        requestContext.setCertFileRequestContextEnum(getCertFileContext);
+        
+        HttpParamUtil.httpParametersValidator(Id, getCertFileContext.getCode());
+        
+        Object jsonObject;
+        try {
+            jsonObject = certRestTemplate.getForObject(bslHost + "/cert/GetCertificationAttachments?Id={Id}&certFileretrievalContext={certFileretrievalContext}",
+                    Object.class, Id, getCertFileContext.getCode());
+        }catch(ResourceAccessException e) {
+            jsonObject = certRestTemplate.getForObject(bslHost2 + "/cert/GetCertificationAttachments?Id={Id}&certFileretrievalContext={certFileretrievalContext}",
+                    Object.class, Id, getCertFileContext.getCode());
+        }
 
-        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
-        String json = mapper.writeValueAsString(expectedList);
-
-        Object jsonResponse = mapper.readValue(json, Object.class);
-        Mockito.mockStatic(HttpParamUtil.class).when(() ->
-                HttpParamUtil.httpParametersValidator(id, contextEnum.getCode())).thenReturn(null);
-
-        when(certRestTemplate.getForObject(anyString(), eq(Object.class), eq(id), eq(contextEnum.getCode())))
-                .thenReturn(jsonResponse);
-
-        // Act
-        List<AttachmentInfo> result = certificationService.getCertificationAttachments(id, contextEnum);
-
-        // Assert
-        assertEquals(1, result.size());
-        assertEquals("file1.pdf", result.get(0).getFileName());
+        
+        List<AttachmentInfo> files = new ArrayList<AttachmentInfo>();
+        try {
+            ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+            String jsonInstring = mapper.writeValueAsString(jsonObject);
+            files = mapper.readValue(jsonInstring, mapType);
+        } catch (Exception e) {
+            logger.error("Fail to get Certification Attachments" + e);
+        }
+        return files;
     }
-
-   @Test
-    void testGetCertificationAttachments_fallbackToSecondaryHost() throws Exception {
-        // Arrange
-        String id = "456";
-        CertFileRequestContextEnum contextEnum = CertFileRequestContextEnum.RETRIEVE;
-        List<AttachmentInfo> expectedList = List.of(new AttachmentInfo("backup.pdf"));
-
-        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
-        String json = mapper.writeValueAsString(expectedList);
-        Object jsonResponse = mapper.readValue(json, Object.class);
-
-        Mockito.mockStatic(HttpParamUtil.class).when(() ->
-                HttpParamUtil.httpParametersValidator(id, contextEnum.getCode())).thenReturn(null);
-
-        when(certRestTemplate.getForObject(eq(bslHost + "/cert/GetCertificationAttachments?Id={Id}&certFileretrievalContext={certFileretrievalContext}"),
-                eq(Object.class), eq(id), eq(contextEnum.getCode())))
-            .thenThrow(new ResourceAccessException("Primary unreachable"));
-
-        when(certRestTemplate.getForObject(eq(bslHost2 + "/cert/GetCertificationAttachments?Id={Id}&certFileretrievalContext={certFileretrievalContext}"),
-                eq(Object.class), eq(id), eq(contextEnum.getCode())))
-            .thenReturn(jsonResponse);
-
-        // Act
-        List<AttachmentInfo> result = certificationService.getCertificationAttachments(id, contextEnum);
-
-        // Assert
-        assertEquals(1, result.size());
-        assertEquals("backup.pdf", result.get(0).getFileName());
-    }
-
-@Test
-    void testGetCertificationAttachments_jsonDeserializationFails() {
-        // Arrange
-        String id = "789";
-        CertFileRequestContextEnum contextEnum = CertFileRequestContextEnum.RETRIEVE;
-
-        Mockito.mockStatic(HttpParamUtil.class).when(() ->
-                HttpParamUtil.httpParametersValidator(id, contextEnum.getCode())).thenReturn(null);
-
-        Object invalidJson = new Object(); // Not a valid JSON for list
-
-        when(certRestTemplate.getForObject(anyString(), eq(Object.class), any(), any()))
-                .thenReturn(invalidJson);
-
-        // Act
-        List<AttachmentInfo> result = certificationService.getCertificationAttachments(id, contextEnum);
-
-        // Assert
-        assertTrue(result.isEmpty());
+    
+    @Override
+    public void deleteCertificationAttachment(String Id, CertFileRequestContextEnum deleteCertFileContext) {
+        
+        CertFileRequestContext requestContext = new CertFileRequestContext();
+        requestContext.setId(Id);
+        requestContext.setCertFileRequestContextEnum(deleteCertFileContext);
+        try {
+        	certRestTemplate.postForObject(bslHost + "/cert/DeleteCertFileService/", requestContext, Object.class);
+        }catch(ResourceAccessException e) {
+        	certRestTemplate.postForObject(bslHost2 + "/cert/DeleteCertFileService/", requestContext, Object.class);
+        }
+        
     }
 }
