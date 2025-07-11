@@ -1,13 +1,29 @@
 @Override
-    public void deleteCertificationAttachment(String Id, CertFileRequestContextEnum deleteCertFileContext) {
-        
+    public List<AttachmentInfo> getCertificationAttachments(String Id, CertFileRequestContextEnum getCertFileContext) {
+
         CertFileRequestContext requestContext = new CertFileRequestContext();
         requestContext.setId(Id);
-        requestContext.setCertFileRequestContextEnum(deleteCertFileContext);
-        try {
-        	certRestTemplate.postForObject(bslHost + "/cert/DeleteCertFileService/", requestContext, Object.class);
-        }catch(ResourceAccessException e) {
-        	certRestTemplate.postForObject(bslHost2 + "/cert/DeleteCertFileService/", requestContext, Object.class);
-        }
+        requestContext.setCertFileRequestContextEnum(getCertFileContext);
         
+        HttpParamUtil.httpParametersValidator(Id, getCertFileContext.getCode());
+        
+        Object jsonObject;
+        try {
+            jsonObject = certRestTemplate.getForObject(bslHost + "/cert/GetCertificationAttachments?Id={Id}&certFileretrievalContext={certFileretrievalContext}",
+                    Object.class, Id, getCertFileContext.getCode());
+        }catch(ResourceAccessException e) {
+            jsonObject = certRestTemplate.getForObject(bslHost2 + "/cert/GetCertificationAttachments?Id={Id}&certFileretrievalContext={certFileretrievalContext}",
+                    Object.class, Id, getCertFileContext.getCode());
+        }
+
+        
+        List<AttachmentInfo> files = new ArrayList<AttachmentInfo>();
+        try {
+            ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+            String jsonInstring = mapper.writeValueAsString(jsonObject);
+            files = mapper.readValue(jsonInstring, mapType);
+        } catch (Exception e) {
+            logger.error("Fail to get Certification Attachments" + e);
+        }
+        return files;
     }
