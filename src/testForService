@@ -1,123 +1,77 @@
-@ExtendWith(MockitoExtension.class)
-class CertificationFileUploadServiceClientImplTest {
+package gov.irs.fatca.qi.service.user;
 
-    @InjectMocks
-    CertificationFileUploadServiceClientImpl service;
+import java.util.ArrayList;
+import java.util.Collection;
 
-    @Mock
-    @Qualifier("certRestTemplate")
-    RestTemplate mockRestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationProvider;
 
-    @BeforeEach
-    void setUp() {
-        ReflectionTestUtils.setField(service, "idtHost", "http://primary-host.com");
-        ReflectionTestUtils.setField(service, "idtHost2", "http://fallback-host.com");
+import gov.irs.fatca.qi.service.impl.CheckUserExistenceClientImpl;
+import gov.irs.fatca.qi.ui.security.AuthenticatedUserDetails;
+
+public class SiteMinderUserDetailsService implements UserDetailsService {
+
+    protected Logger logger = LoggerFactory.getLogger(this.getClass());
+
+    private static final String DEFAULT_SECURITY_USER_ROLE = "ROLE_USER";
+    private static final String DEFAULT_SECURITY_USER_PASSWORD = "N/A";
+
+    private String dummySecurityUserPassword = DEFAULT_SECURITY_USER_PASSWORD;
+    private String securityUserRole = DEFAULT_SECURITY_USER_ROLE;
+
+    @Autowired
+    CheckUserExistenceClientImpl checkUserExistenceClientImpl;
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+
+        /* username is the sadi Id coming from the Siteminder HTTP headers */
+        String sadiId = username;
+
+        // Get this user details from database and set its roles also here
+        Collection<GrantedAuthority> authorities = new ArrayList<GrantedAuthority>();
+        authorities.add(new SimpleGrantedAuthority(securityUserRole));
+
+        AuthenticatedUserDetails authenticatedUserDetails = new AuthenticatedUserDetails(sadiId,
+                dummySecurityUserPassword, true, true, true, true, authorities);
+
+        return authenticatedUserDetails;
     }
 
-    @Test
-    void uploadCertAttachment_successFromPrimary() throws Throwable {
-        // Arrange
-        String id = "123";
-        String sadiId = "SADI001";
-        CertFileRequestContextEnum contextEnum = CertFileRequestContextEnum.UPLOAD;
-        AttachmentInfo inputAttachment = new AttachmentInfo("test.pdf");
-
-        AttachmentInfo mockResponse = new AttachmentInfo("uploaded.pdf");
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        Object responseAsObject = objectMapper.convertValue(mockResponse, Object.class);
-
-        try (MockedStatic<HttpParamUtil> mockStatic = Mockito.mockStatic(HttpParamUtil.class)) {
-            mockStatic.when(() ->
-                HttpParamUtil.httpParametersValidator(id, contextEnum.getCode(), sadiId)).thenReturn(null);
-
-            when(mockRestTemplate.postForObject(
-                    contains("http://primary-host.com"),
-                    eq(inputAttachment),
-                    eq(Object.class),
-                    eq(id),
-                    eq(contextEnum.getCode()),
-                    eq(sadiId)
-            )).thenReturn(responseAsObject);
-
-            // Act
-            AttachmentInfo result = service.uploadCertAttachment(id, contextEnum, inputAttachment, sadiId);
-
-            // Assert
-            assertNotNull(result);
-            assertEquals("uploaded.pdf", result.getFileName());
-
-            verify(mockRestTemplate, times(1)).postForObject(
-                contains("http://primary-host.com"), any(), eq(Object.class), any(), any(), any());
-            verify(mockRestTemplate, never()).postForObject(
-                contains("http://fallback-host.com"), any(), eq(Object.class), any(), any(), any());
-        }
+    /**
+     * @return the dummySecurityUserPassword
+     */
+    public String getDummySecurityUserPassword() {
+        return dummySecurityUserPassword;
     }
 
-    @Test
-    void uploadCertAttachment_fallbackToSecondaryHostOnException() throws Throwable {
-        // Arrange
-        String id = "123";
-        String sadiId = "SADI002";
-        CertFileRequestContextEnum contextEnum = CertFileRequestContextEnum.UPLOAD;
-        AttachmentInfo inputAttachment = new AttachmentInfo("test.pdf");
-
-        AttachmentInfo fallbackResponse = new AttachmentInfo("fallback.pdf");
-        ObjectMapper mapper = new ObjectMapper();
-        Object responseAsObject = mapper.convertValue(fallbackResponse, Object.class);
-
-        try (MockedStatic<HttpParamUtil> mockStatic = Mockito.mockStatic(HttpParamUtil.class)) {
-            mockStatic.when(() ->
-                HttpParamUtil.httpParametersValidator(id, contextEnum.getCode(), sadiId)).thenReturn(null);
-
-            when(mockRestTemplate.postForObject(
-                    contains("http://primary-host.com"), any(), eq(Object.class), any(), any(), any()))
-                .thenThrow(new RuntimeException("Primary service down"));
-
-            when(mockRestTemplate.postForObject(
-                    contains("http://fallback-host.com"), any(), eq(Object.class), any(), any(), any()))
-                .thenReturn(responseAsObject);
-
-            // Act
-            AttachmentInfo result = service.uploadCertAttachment(id, contextEnum, inputAttachment, sadiId);
-
-            // Assert
-            assertNotNull(result);
-            assertEquals("fallback.pdf", result.getFileName());
-        }
+    /**
+     * @param dummySecurityUserPassword
+     *            the dummySecurityUserPassword to set
+     */
+    public void setDummySecurityUserPassword(String dummySecurityUserPassword) {
+        this.dummySecurityUserPassword = dummySecurityUserPassword;
     }
 
-    @Test
-    void uploadCertAttachment_invalidResponseThrowsWebServiceClientException() throws Throwable {
-        // Arrange
-        String id = "999";
-        String sadiId = "SADI003";
-        CertFileRequestContextEnum contextEnum = CertFileRequestContextEnum.UPLOAD;
-        AttachmentInfo inputAttachment = new AttachmentInfo("invalid.pdf");
+    /**
+     * @return the securityUserRole
+     */
+    public String getSecurityUserRole() {
+        return securityUserRole;
+    }
 
-        // Simulate invalid JSON for AttachmentInfo but valid Error
-        Error error = new Error("CERT_ERROR", "E001", "Virus Scan Failed", "MSG123");
-
-        ObjectMapper mapper = new ObjectMapper();
-        String errorJson = mapper.writeValueAsString(error);
-        Object responseAsObject = mapper.readValue(errorJson, Object.class);
-
-        try (MockedStatic<HttpParamUtil> mockStatic = Mockito.mockStatic(HttpParamUtil.class)) {
-            mockStatic.when(() ->
-                HttpParamUtil.httpParametersValidator(id, contextEnum.getCode(), sadiId)).thenReturn(null);
-
-            when(mockRestTemplate.postForObject(
-                    contains("http://primary-host.com"), any(), eq(Object.class), any(), any(), any()))
-                .thenReturn(responseAsObject);
-
-            // Act & Assert
-            WebServiceClientException ex = assertThrows(WebServiceClientException.class, () ->
-                service.uploadCertAttachment(id, contextEnum, inputAttachment, sadiId));
-
-            assertEquals("CERT_ERROR", ex.getCategory());
-            assertEquals("E001", ex.getCode());
-            assertEquals("Virus Scan Failed", ex.getDescription());
-            assertEquals("MSG123", ex.getMessageId());
-        }
+    /**
+     * @param securityUserRole
+     *            the securityUserRole to set
+     */
+    public void setSecurityUserRole(String securityUserRole) {
+        this.securityUserRole = securityUserRole;
     }
 }
