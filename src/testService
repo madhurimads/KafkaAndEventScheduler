@@ -1,42 +1,179 @@
-@Test
-    void getUserGuide_whenActiveIndexZero_redirectsToLogin() throws Exception {
-        String result = controller.getUserGuide(model, new ProfileInfo(), 0);
-        assertEquals("redirect:/secure/qi-login/select-account/", result);
+package gov.irs.fatca.qi.controller;
 
-        verifyNoInteractions(profileServiceClientImpl, updateSubmissionStatusClientImpl);
+import static gov.irs.fatca.qi.strategy.util.HttpHeaderUtil.MESSAGE_ID;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.owasp.esapi.ESAPI;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.StringHttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.bind.WebDataBinder;
+import org.springframework.web.bind.annotation.InitBinder;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import gov.irs.fatca.qi.domain.Error;
+import gov.irs.fatca.qi.domain.admin.EntitySubmissionInfo;
+import gov.irs.fatca.qi.domain.admin.SubmissionInfo;
+import gov.irs.fatca.qi.strategy.util.HttpParamUtil;
+import gov.irs.fatca.qi.validator.fields.FieldsValidator;
+
+@RestController
+public class AdminEntityInfoServiceController {
+
+    protected Logger logger = LoggerFactory.getLogger(AdminEntityInfoServiceController.class);
+
+    private static final String MESSAGE_ID_KEY = MESSAGE_ID;
+
+    @Value("${dal.host}")
+    private String dalHost;
+
+    @Value("${get.admin.entity.info.service.enabled}")
+    private boolean getAdminEntityInfoServiceEnabled;
+
+    @Value("${update.submission.info.service.enabled}")
+    private boolean updateSubmissionInfoServiceEnabled;
+
+    @Value("${update.entity.submission.info.service.enabled}")
+    private boolean updateEntitySubmissionInfoServiceEnabled;
+
+    @Value("${get.admin.entity.info.service}")
+    private String getAdminEntityInfoService;
+
+    @Value("${update.submission.info.service}")
+    private String updateSubmissionInfoService;
+
+    @Value("${update.entity.submission.info.service}")
+    private String updateEntitySubmissionInfoService;
+
+    private ObjectMapper objMapper = new ObjectMapper();
+
+    private RestTemplate restTemplate = new RestTemplate();
+
+    private FieldsValidator fieldsValidator = new FieldsValidator();
+    @InitBinder
+    public void initBinder(WebDataBinder binder) {
+        binder.setAllowedFields("entityId", "sadiId", "seid", "dummyBody", "entitySubmissionInfo", "submissionInfo",
+                "headers", "updateType");
     }
 
-    @Test
-    void getUserGuide_whenProfileSubmissionTypeAP_returnsNewApplicationGuide() throws Exception {
-        ProfileInfo profile = new ProfileInfo();
-        profile.setEntityId(1L);
-        profile.setSadiId("SADI123");
-        profile.setSubmissionType("AP");
+    @RequestMapping(method = RequestMethod.POST, value = "/GetAdminEntityInfoService")
+    public Object retriveSubmission(@RequestParam(value = "entityId") String entityId,
+            @RequestParam(value = "requestType") String requestType,
+            @RequestHeader MultiValueMap<String, String> headers) {
 
-        // Service returns updated profile
-        when(profileServiceClientImpl.execute(anyLong(), anyString(), any())).thenReturn(profile);
+        SubmissionInfo submissionInfo = new SubmissionInfo();
+        Object obj = null;
 
-        String result = controller.getUserGuide(model, profile, 1);
+        if (getAdminEntityInfoServiceEnabled) {
+            try {
+                // Register the data type support offered by Jackson DataType
+                // JSR310 libs
+                objMapper.findAndRegisterModules();
 
-        assertEquals("user-guide-new-application", result);
+                String requestHeader = "requestHeader";
+                HttpEntity<String> httpEntity = new HttpEntity<String>(requestHeader, headers);
 
-        verify(updateSubmissionStatusClientImpl)
-                .execute(eq(profile.getEntityId()), eq(profile.getSadiId()), any(), eq("IN"), any());
-        verify(profileServiceClientImpl, times(2))
-                .execute(eq(profile.getEntityId()), eq(profile.getSadiId()), any());
-        verify(model).addAttribute("profileInfo", profile);
+                // Pass alone form14345 from DAL WS
+
+                boolean hasValidAllHttpParams = HttpParamUtil.validateHttpParameters(entityId);
+                boolean hasValidSadiId = false;
+                if (entityId == null || entityId.isEmpty())
+                    hasValidSadiId = true;
+                else
+                    hasValidSadiId = fieldsValidator.validateSadiId(entityId);
+                boolean hasValidHttpEntity = fieldsValidator.validateSqlInjection(httpEntity.toString());
+                boolean hasValidRequestType = HttpParamUtil.validateHttpParameters(requestType);
+                boolean hasValidHttpParameters = (hasValidAllHttpParams && hasValidSadiId && hasValidHttpEntity
+                        && hasValidRequestType);        
+
+                if (hasValidHttpParameters) {
+                    obj = restTemplate.postForObject(dalHost + getAdminEntityInfoService, httpEntity, Object.class,
+                            entityId, requestType);
+                } else {
+                    return new Error("BSL-9064", "BSL", "BSL processing failure",
+                            headers.get(MESSAGE_ID_KEY).toString());
+                }
+            } catch (Exception e) {
+                logger.error("BSL - Failed to get form from DAL =" + ESAPI.encoder().decodeForHTML(e.getMessage()), ESAPI.encoder().decodeForHTML(e.toString()));
+                return new Error("3033", "BSL", "BSL processing failure", headers.get(MESSAGE_ID_KEY).toString());
+
+            }
+        } else {
+
+            submissionInfo.setEffectiveDate(null);
+            submissionInfo.setLastStatusUpdateDate(null);
+            submissionInfo.setDueDate(null);
+            submissionInfo.setExtendedDueDate(null);
+            submissionInfo.setLastUpdatedBy("peter");
+            submissionInfo.setAgreementStatus("Initiated");
+            submissionInfo.setStatusChangeReasons("No Reasons at all");
+            submissionInfo.setLastOverrideExplanation("it is what it is");
+            submissionInfo.setLastCannedMessage("insufficient");
+            submissionInfo.setAgreementNote("this is the renewal of agreement note");
+            obj = submissionInfo;
+        }
+
+        return obj;
     }
 
-    @Test
-    void getUserGuide_whenProfileSubmissionTypeNonAP_returnsGuide() throws Exception {
-        ProfileInfo profile = new ProfileInfo();
-        profile.setEntityId(2L);
-        profile.setSadiId("SADI456");
-        profile.setSubmissionType("BP"); // not AP
+    @RequestMapping(method = RequestMethod.POST, value = {"/UpdateSubmissionInfoService","/UpdateSubmissionInfoService/"})
+    public Object updateSubmission(@RequestParam(value = "seid") String seid,
+            @RequestParam(value = "entityId") String entityId, @RequestParam(value = "updateType") String updateType,
+            @RequestBody SubmissionInfo submissionInfo, @RequestHeader MultiValueMap<String, String> headers) {
+    	
+        Object obj = new Object();
+        if (updateSubmissionInfoServiceEnabled) {
+            try {
+                HttpEntity<SubmissionInfo> httpEntity = new HttpEntity<SubmissionInfo>(submissionInfo, headers);
+                obj = restTemplate.postForObject(dalHost + updateSubmissionInfoService, httpEntity, Object.class, seid,
+                        entityId, updateType);
+            } catch (Exception e) {
+                logger.error("BSL - Failed to submit form to DAL = " + ESAPI.encoder().decodeForHTML(e.getMessage()), ESAPI.encoder().decodeForHTML(e.toString()));
+                return new Error("3029", "BSL", "BSL processing failure", headers.get(MESSAGE_ID_KEY).toString());
+            }
+        } else {
+            obj = "111111";
+        }
 
-        when(profileServiceClientImpl.execute(anyLong(), anyString(), any())).thenReturn(profile);
-
-        String result = controller.getUserGuide(model, profile, 1);
-
-        assertEquals("user-guide", result);
+        return obj;
     }
+
+    @RequestMapping(method = RequestMethod.POST, value = "/UpdateEntitySubmissionInfoService")
+    public Object updateEntitySubmissionInfo(@RequestParam(value = "seid") String seid,
+            @RequestParam(value = "entityId") String entityId, @RequestBody EntitySubmissionInfo entitySubmissionInfo,
+            @RequestHeader MultiValueMap<String, String> headers) { 
+    	
+        if (updateEntitySubmissionInfoServiceEnabled) {
+            try {
+                HttpEntity<EntitySubmissionInfo> httpEntity = new HttpEntity<EntitySubmissionInfo>(entitySubmissionInfo,
+                        headers);
+                restTemplate.postForObject(dalHost + updateEntitySubmissionInfoService, httpEntity, Object.class, seid,
+                        entityId);
+            } catch (Exception e) {
+                logger.error("BSL - Failed to submit form to DAL = " + ESAPI.encoder().decodeForHTML(e.getMessage()), ESAPI.encoder().decodeForHTML(e.toString()));
+                return new Error("3030", "BSL", "BSL processing failure", headers.get(MESSAGE_ID_KEY).toString());
+            }
+        }
+
+        return HttpStatus.OK;
+    }
+}
