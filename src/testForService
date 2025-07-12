@@ -1,39 +1,2102 @@
-import org.junit.jupiter.api.Test;
+package gov.irs.fatca.qi.partOneController;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.io.IOException;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
-class FileContentUtilsTest {
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 
-    @Test
-    void testKnownFormats() {
-        assertEquals("application/doc", FileContentUtils.getHtmlContentType("doc"));
-        assertEquals("application/docx", FileContentUtils.getHtmlContentType("docx"));
-        assertEquals("application/xls", FileContentUtils.getHtmlContentType("xls"));
-        assertEquals("application/xlsx", FileContentUtils.getHtmlContentType("xlsx"));
-        assertEquals("text/plain", FileContentUtils.getHtmlContentType("txt"));
-        assertEquals("image/jpg", FileContentUtils.getHtmlContentType("jpg"));
-        assertEquals("image/jpeg", FileContentUtils.getHtmlContentType("jpeg"));
-        assertEquals("image/png", FileContentUtils.getHtmlContentType("png"));
-        assertEquals("application/pdf", FileContentUtils.getHtmlContentType("pdf"));
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.propertyeditors.StringTrimmerEditor;
+import org.springframework.beans.support.PagedListHolder;
+import org.springframework.context.annotation.PropertySource;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.util.MultiValueMap;
+import org.springframework.validation.Errors;
+import org.springframework.validation.Validator;
+import org.springframework.web.bind.WebDataBinder;
+import org.springframework.web.bind.annotation.InitBinder;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.SessionAttributes;
+import org.springframework.web.client.RestClientException;
+
+import gov.irs.fatca.qi.domain.entity.ProfileInfo;
+import gov.irs.fatca.qi.domain.entity.ReviewMode;
+import gov.irs.fatca.qi.domain.form14345.Address;
+import gov.irs.fatca.qi.domain.form14345.BranchInfo;
+import gov.irs.fatca.qi.domain.form14345.EntityEligibility;
+import gov.irs.fatca.qi.domain.form14345.EntityInfo;
+import gov.irs.fatca.qi.domain.form14345.Form14345;
+import gov.irs.fatca.qi.domain.form14345.ResponsibleOfficerContactPerson;
+import gov.irs.fatca.qi.domain.saas.SaasJson;
+import gov.irs.fatca.qi.exception.QIUIErrorCode;
+import gov.irs.fatca.qi.exception.QIUIException;
+import gov.irs.fatca.qi.service.DeleteBranchService;
+import gov.irs.fatca.qi.service.DropdownService;
+import gov.irs.fatca.qi.service.EditBranchService;
+import gov.irs.fatca.qi.service.Form14345UtilsService;
+import gov.irs.fatca.qi.service.GetFormClient;
+import gov.irs.fatca.qi.service.ProfileServiceClient;
+import gov.irs.fatca.qi.service.RecordUserLoggedInClient;
+import gov.irs.fatca.qi.service.SaasService;
+import gov.irs.fatca.qi.service.SubmitFormClient;
+import gov.irs.fatca.qi.service.UpdateBranchService;
+import gov.irs.fatca.qi.service.UpdateSubmissionStatusClient;
+import gov.irs.fatca.qi.strategy.util.DropdownGeneratorUtils;
+import gov.irs.fatca.qi.strategy.util.HttpHeaderUtil;
+import gov.irs.fatca.qi.validator.fields.FieldsValidator;
+import gov.irs.fatca.qi.validator.responsibleOfficerContactPerson.ContactPersonValidator;
+import gov.irs.fatca.qi.validator.responsibleOfficerContactPerson.ResponsibleOfficerContactPersonValidator;
+
+@Controller
+@PropertySource(value = "classpath:/messageBundle/messages_en_US.properties")
+@SessionAttributes({ "profileInfo", "reviewMode" })
+public class PartOneController extends BaseListPartOneController {
+
+    private static final String DEFAULT_FORM_LIST_KEY = "Branch";
+
+    private static final String MESSAGE_ID_KEY = "messageid";
+
+    private String listKey = DEFAULT_FORM_LIST_KEY;
+
+    protected Logger logger = LoggerFactory.getLogger(PartOneController.class);
+    
+    private static final String SUCCESS_STATUS = "200";
+
+    @InitBinder
+    public void initBinder(WebDataBinder binder) {
+
+        binder.registerCustomEditor(String.class, new StringTrimmerEditor(true));
     }
 
-    @Test
-    void testCaseInsensitiveMatching() {
-        assertEquals("application/pdf", FileContentUtils.getHtmlContentType("PDF"));
-        assertEquals("application/docx", FileContentUtils.getHtmlContentType("DoCx"));
-        assertEquals("image/png", FileContentUtils.getHtmlContentType("PnG"));
+    @Value("${get.form.service}")
+    private String getFormService;
+
+    @Autowired
+    SubmitFormClient submitFormClientImpl;
+
+    @Autowired
+    UpdateSubmissionStatusClient updateSubmissionStatusClientImpl;
+
+    @Autowired
+    GetFormClient getFormClientImpl;
+
+    @Autowired
+    ProfileServiceClient profileServiceClientImpl;
+
+    @Autowired
+    DropdownService dropDownServiceImpl;
+
+    @Autowired
+    DeleteBranchService deleteBranchServiceImpl;
+
+    @Autowired
+    RecordUserLoggedInClient recordUserLoggedInClientImpl;
+
+    @Autowired
+    EditBranchService editBranchServiceImpl;
+
+    @Autowired
+    UpdateBranchService updateBranchServiceImpl;
+    
+    @Autowired
+    Form14345UtilsService form14345UtilsServiceImpl;
+
+    @Value("${saas.event.id.entity.disassociation}")
+    private String saasEventIdEntityDisassociation;
+
+    @Value("${saas.event.id.entity.screening.update}")
+    private String saasEventIdEntityScreeningUpdate;
+
+    @Autowired
+    SaasService saasServiceImpl;
+
+    @Resource(name = "branchInfoValidator")
+    private Validator branchInfoValidator;
+
+    @Resource(name = "page3Validator")
+    private Validator page3Validator;
+
+    @Resource(name = "page6Validator")
+    private Validator page6Validator;
+
+    @Resource(name = "page7Validator")
+    private Validator page7Validator;
+
+    @Resource(name = "page8Validator")
+    private Validator page8Validator;
+
+    @Resource(name = "entityInfoValidator")
+    private Validator entityInfoValidator;
+
+    @Resource(name = "entityEligibilityValidator")
+    private Validator entityEligibilityValidator;
+
+    @Resource(name = "entityEligibilityValidatorWp")
+    private Validator entityEligibilityValidatorWp;
+
+    @Resource(name = "entityEligibilityValidatorWt")
+    private Validator entityEligibilityValidatorWt;
+
+    @Resource(name = "addressValidator")
+    private Validator addressValidator;
+
+    @Resource(name = "responsibleOfficerContactPersonValidator")
+    private ResponsibleOfficerContactPersonValidator responsibleOfficerContactPersonValidator;
+
+    @Resource(name = "contactPersonValidator")
+    private ContactPersonValidator contactPersonValidator;
+
+    @Resource(name = "entityInfoValidatorForNewApplication")
+    private Validator entityInfoValidatorForNewApplication;
+
+    @Resource(name = "entityEligibilityValidatorNewApplication")
+    private Validator entityEligibilityValidatorNewApplication;
+
+    @Resource(name = "entityEligibilityValidatorWpNewApplication")
+    private Validator entityEligibilityValidatorWpNewApplication;
+
+    @Resource(name = "entityEligibilityValidatorWtNewApplication")
+    private Validator entityEligibilityValidatorWtNewApplication;
+
+    @Value("${saas.src.addr.header}")
+    String saasSrcAddrHeader;
+
+    FieldsValidator fieldsValidator = new FieldsValidator();
+
+    @RequestMapping(value = "/secure/QI/form/guide", method = RequestMethod.GET)
+    public String getUserGuide(Model model, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            @ModelAttribute("activeInd") Integer activeInd) throws Exception {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+
+        profileInfo = profileServiceClientImpl.execute(profileInfo.getEntityId(), profileInfo.getSadiId(), headers);
+
+        updateSubmissionStatusClientImpl.execute(profileInfo.getEntityId(), profileInfo.getSadiId(),
+                profileInfo.getActiveFormId(), "IN", headers);
+
+        profileInfo = profileServiceClientImpl.execute(profileInfo.getEntityId(), profileInfo.getSadiId(), headers);
+        model.addAttribute("profileInfo", profileInfo);
+
+        if (profileInfo.getSubmissionType().equalsIgnoreCase("AP")) {
+            return "user-guide-new-application";
+        } else {
+            return "user-guide";
+        }
+    }
+    
+    @RequestMapping(value = "/secure/QI/form/guide", params = { "homePage" }, method = RequestMethod.POST)
+    public String userGuideToPart1Page1(Model model, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/qi-landing/";
     }
 
-    @Test
-    void testUnknownFormatReturnsDefault() {
-        assertEquals("text/plain", FileContentUtils.getHtmlContentType("exe"));
-        assertEquals("text/plain", FileContentUtils.getHtmlContentType("unknown"));
-        assertEquals("text/plain", FileContentUtils.getHtmlContentType(""));
+    @RequestMapping(value = "/secure/QI/form/guide", params = { "part1page1" }, method = RequestMethod.POST)
+    public String userGuideToHomePage(Model model, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/part1/entity";
     }
 
-    @Test
-    void testNullInputReturnsDefault() {
-        // Optional: if you want to support null input safely
-        assertThrows(NullPointerException.class, () -> FileContentUtils.getHtmlContentType(null));
+    @RequestMapping(value = { "/secure/QI/form/part1/entity" }, method = RequestMethod.GET)
+    public String getPart1Page1(Model model, EntityInfo entityInfo,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws Exception {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page1", headers);
+
+        if (profileInfo.getSubmissionType() != null
+                && fieldsValidator.validateCharacters(profileInfo.getSubmissionType())) {
+            logger.info("The Submission Type is " + profileInfo.getSubmissionType());
+        }
+
+
+        if (form14345.getEntityInfo().getEinPart1() != null) {
+            profileInfo.setEin1(form14345.getEntityInfo().getEinPart1());
+            form14345.getEntityInfo().setEinPart1("**");
+        }
+        if (form14345.getEntityInfo().getEinPart2() != null) {
+            profileInfo.setEin2(form14345.getEntityInfo().getEinPart2());
+            form14345.getEntityInfo().setEinPart2("*******");
+        }
+        if (form14345.getEntityInfo() != null && form14345.getEntityInfo().getEntityType() != null) {
+            reviewMode.setEntType(form14345.getEntityInfo().getEntityType());
+        }
+        
+        model.addAttribute("profileInfo", profileInfo);
+        model.addAttribute("reviewMode", reviewMode);
+        model.addAttribute("entityInfo", form14345.getEntityInfo());
+        setPart1EntityModelAttr(model, profileInfo, reviewMode);
+        
+        return "page1";
+    }
+    
+    @RequestMapping(value = "/secure/QI/form/part1/entity", params = { "userguide" }, method = RequestMethod.POST)
+    public String page1ToUserGuide(Model model, EntityInfo entityInfo, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/guide";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/entity", params = { "savepart1page1" }, method = RequestMethod.POST)
+    public String savePart1Page1(HttpServletRequest httpServletRequest, Model model, @Valid EntityInfo entityInfo,
+            Errors bindingResult, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            EntityEligibility entityEligibility, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        if (entityInfo.getEinPart1() != null && entityInfo.getEinPart1().equalsIgnoreCase("**")) {
+            entityInfo.setEinPart1(profileInfo.getEin1());
+        }
+
+        if (entityInfo.getEinPart2() != null && entityInfo.getEinPart2().equalsIgnoreCase("*******")) {
+            entityInfo.setEinPart2(profileInfo.getEin2());
+        }
+
+        if (reviewMode.isInReviewMode() == true
+                && (!entityInfo.getEntityType().equalsIgnoreCase(reviewMode.getEntType()))) {
+            reviewMode.setInReviewMode(false);
+        }
+
+        if (profileInfo.getSubmissionType().equalsIgnoreCase("AP")) {
+            entityInfoValidatorForNewApplication.validate(entityInfo, bindingResult);
+
+        } else {
+            entityInfoValidator.validate(entityInfo, bindingResult);
+        }
+
+        if (bindingResult.hasErrors()) {
+            profileInfo.setEin1(entityInfo.getEinPart1());
+            profileInfo.setEin2(entityInfo.getEinPart2());
+            model.addAttribute("renewalType", true);
+            model.addAttribute("applicationType", false);
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            setPart1EntityModelAttr(model, profileInfo, reviewMode);
+            
+            return "page1";
+        }
+
+        form14345.setEntityInfo(entityInfo);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        
+        submitFormClientImpl.execute(form14345, "page1", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        handlePart1EntitySaasEvents(form14345, profileInfo, httpServletRequest);
+
+        return "redirect:/secure/QI/form/part1/entity";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/entity", params = { "part1page2" }, method = RequestMethod.POST)
+    public String page1ToPage2(HttpServletRequest httpServletRequest, Model model, @Valid EntityInfo entityInfo,
+            Errors bindingResult, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            EntityEligibility entityEligibility, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd)
+            throws IOException {
+    	
+    	form14345.setSessionId(httpServletRequest.getSession().getId());
+    	form14345.setIpAddress(httpServletRequest.getRemoteAddr());
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        if (entityInfo.getEinPart1() != null && entityInfo.getEinPart1().equalsIgnoreCase("**")) {
+            entityInfo.setEinPart1(profileInfo.getEin1());
+        }
+
+        if (entityInfo.getEinPart2() != null && entityInfo.getEinPart2().equalsIgnoreCase("*******")) {
+            entityInfo.setEinPart2(profileInfo.getEin2());
+        }
+
+        if (reviewMode != null && reviewMode.isInReviewMode() && reviewMode.getEntType() != null
+                && entityInfo.getEntityType() != null
+                && (!entityInfo.getEntityType().equalsIgnoreCase(reviewMode.getEntType()))) {
+            reviewMode.setInReviewMode(false);
+        }
+
+        if (profileInfo.getSubmissionType().equalsIgnoreCase("AP")) {
+            entityInfoValidatorForNewApplication.validate(entityInfo, bindingResult);
+
+        } else {
+
+            entityInfoValidator.validate(entityInfo, bindingResult);
+        }
+
+        int count = 0;
+        count = bindingResult.getAllErrors().size();
+
+        if (bindingResult.hasErrors()) {
+            profileInfo.setEin1(entityInfo.getEinPart1());
+            profileInfo.setEin2(entityInfo.getEinPart2());
+            model.addAttribute("renewalType", true);
+            model.addAttribute("applicationType", false);
+            model.addAttribute("count", count);
+            setPart1EntityModelAttr(model, profileInfo, reviewMode);
+            return "page1";
+        }
+        reviewMode.setPage1(true);
+        form14345.setEntityInfo(entityInfo);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page1", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        handlePart1EntitySaasEvents(form14345, profileInfo, httpServletRequest);
+
+        return "redirect:/secure/QI/form/part1/eligibility";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/entity", params = { "review" }, method = RequestMethod.POST)
+    public String page1ToReviewPart1(Model model, @Valid EntityInfo entityInfo, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, EntityEligibility entityEligibility,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, @ModelAttribute("form14345") Form14345 form14345,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        if (entityInfo.getEinPart1() != null && entityInfo.getEinPart1().equalsIgnoreCase("**")) {
+            entityInfo.setEinPart1(profileInfo.getEin1());
+        }
+
+        if (entityInfo.getEinPart2() != null && entityInfo.getEinPart2().equalsIgnoreCase("*******")) {
+            entityInfo.setEinPart2(profileInfo.getEin2());
+        }
+
+        if (profileInfo.getSubmissionType().equalsIgnoreCase("AP")) {
+            entityInfoValidatorForNewApplication.validate(entityInfo, bindingResult);
+        } else {
+            entityInfoValidator.validate(entityInfo, bindingResult);
+        }
+
+        if (bindingResult.hasErrors()) {
+            profileInfo.setEin1(entityInfo.getEinPart1());
+            profileInfo.setEin2(entityInfo.getEinPart2());
+            setPart1EntityModelAttr(model, profileInfo, reviewMode);
+            model.addAttribute("renewalType", true);
+            model.addAttribute("applicationType", false);
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            
+            return "page1";
+        }
+
+        form14345.setEntityInfo(entityInfo);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page1", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        
+        return "redirect:/secure/QI/form/review/general-information/";
+    }
+    
+    private void setPart1EntityModelAttr(Model model, ProfileInfo profileInfo, ReviewMode reviewMode) {
+        addRenewalCycleModelAttributes(model, profileInfo);
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+        model.addAttribute("allCountries", DropdownGeneratorUtils.countryOfOrgDropdown(form14345UtilsServiceImpl.populateCountries()));
+        model.addAttribute("allLegalNameChangeReason", form14345UtilsServiceImpl.populateReasonForLegalNameChange());
+    }
+    
+    private void handlePart1EntitySaasEvents(Form14345 form14345, ProfileInfo profileInfo, HttpServletRequest httpServletRequest) throws IOException {
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        Form14345 beforeUpdateForm14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page1", headers);
+        
+        if (beforeUpdateForm14345.getEntityInfo() != null && form14345.getEntityInfo() != null) {
+        	String ipAddress = saasServiceImpl.parseXForwardHeader(httpServletRequest);
+            if(ipAddress == null || ipAddress.isEmpty()) {
+            	ipAddress = httpServletRequest.getRemoteAddr();
+            }
+            if (beforeUpdateForm14345.getEntityInfo().getApplicantName() != null
+                    && form14345.getEntityInfo().getApplicantName() != null) {
+                if (beforeUpdateForm14345.getEntityInfo().getApplicantName()
+                        .equalsIgnoreCase(form14345.getEntityInfo().getApplicantName()) == false) {
+                    SaasJson saasJson = new SaasJson();
+                    saasJson.setVarData(
+                            "Old applicant name: " + beforeUpdateForm14345.getEntityInfo().getApplicantName()
+                                    + " New applicant name: " + form14345.getEntityInfo().getApplicantName());
+                    saasJson.setEntityId(profileInfo.getEntityId());
+                    saasJson.setSrcAddr(ipAddress);
+                    saasJson.setDeviceIdentifier(ipAddress);
+                    saasJson.setSessionId(httpServletRequest.getSession().getId());
+                    saasJson.setStatusCd(SUCCESS_STATUS);
+                    saasServiceImpl.setUpAndSubmitJsonObject(profileInfo.getSadiId(), profileInfo.getEntityAliasId(),
+                            saasEventIdEntityScreeningUpdate, true, saasJson);
+                }
+            }
+            if (beforeUpdateForm14345.getEntityInfo().getCountry() != null
+                    && form14345.getEntityInfo().getCountry() != null) {
+                if (beforeUpdateForm14345.getEntityInfo().getCountry()
+                        .equalsIgnoreCase(form14345.getEntityInfo().getCountry()) == false) {
+                    SaasJson saasJson = new SaasJson();
+                    saasJson.setVarData("Old country name: " + beforeUpdateForm14345.getEntityInfo().getCountry()
+                            + " New country: " + form14345.getEntityInfo().getCountry());
+                    saasJson.setEntityId(profileInfo.getEntityId());
+                    saasJson.setSrcAddr(ipAddress);
+                    saasJson.setDeviceIdentifier(ipAddress);
+                    saasJson.setSessionId(httpServletRequest.getSession().getId());
+                    saasJson.setStatusCd(SUCCESS_STATUS);
+                    saasServiceImpl.setUpAndSubmitJsonObject(profileInfo.getSadiId(), profileInfo.getEntityAliasId(),
+                            saasEventIdEntityScreeningUpdate, true, saasJson);
+                }
+            }
+        }
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/eligibility" }, method = RequestMethod.GET)
+    public String getPart1Page2(Model model, EntityEligibility entityEligibility,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        MultiValueMap<String, String> header = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page2", header);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        profileInfo = profileServiceClientImpl.execute(profileInfo.getEntityId(), profileInfo.getSadiId(), headers);
+
+        if (form14345.getEligibility() != null) {
+            model.addAttribute("entityEligibility", form14345.getEligibility());
+        }
+
+        if (form14345.getEligibility() != null && form14345.getEligibility().getApplyForQSL() != null) {
+            reviewMode.setQslQddValue(form14345.getEligibility().getApplyForQSL());
+        }
+
+        setPart1EligibilityModelAttr(model, profileInfo, reviewMode);
+        
+        return "page2";
+    }
+    
+    @RequestMapping(value = "/secure/QI/form/part1/eligibility", params = { "part1page1" }, method = RequestMethod.POST)
+    public String page2ToPage1(Model model, EntityEligibility entityEligibility,
+            @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/part1/entity";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/eligibility", params = { "savepart1page2" }, method = RequestMethod.POST)
+    public String savePart1Page2(HttpServletRequest httpServletRequest, Model model,
+            @Valid EntityEligibility entityEligibility, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd)
+            throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        if (reviewMode != null && reviewMode.isInReviewMode() && reviewMode.getQslQddValue() != null
+                && entityEligibility != null && entityEligibility.getApplyForQSL() != null
+                && (!entityEligibility.getApplyForQSL().equalsIgnoreCase(reviewMode.getQslQddValue()))) {
+            reviewMode.setInReviewMode(false);
+        }
+
+        validatePart1Eligibility(profileInfo, entityEligibility, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            setPart1EligibilityModelAttr(model, profileInfo, reviewMode);
+            
+            return "page2";
+        }
+
+        form14345.setEligibility(entityEligibility);
+        if (entityEligibility.getApplyForQSL() != null && entityEligibility.getApplyForQSL().equalsIgnoreCase("QDD")) {
+            profileInfo.setQDD(true);
+        } else {
+            profileInfo.setQDD(false);
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page2", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        handlePart1EligibilitySaasEvents(form14345, profileInfo, httpServletRequest);
+
+        return "redirect:/secure/QI/form/part1/eligibility";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/eligibility", params = { "part1page3" }, method = RequestMethod.POST)
+    public String page2ToPage3(HttpServletRequest httpServletRequest, Model model,
+            @Valid EntityEligibility entityEligibility, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd)
+            throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        if (reviewMode.isInReviewMode() == true
+                && (entityEligibility.getApplyForQSL() != null && !entityEligibility.getApplyForQSL().equalsIgnoreCase(reviewMode.getQslQddValue()))) {
+            reviewMode.setInReviewMode(false);
+        }
+
+        validatePart1Eligibility(profileInfo, entityEligibility, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            setPart1EligibilityModelAttr(model, profileInfo, reviewMode);
+            return "page2";
+        }
+
+        reviewMode.setPage2(true);
+        form14345.setEligibility(entityEligibility);
+
+        if (entityEligibility.getApplyForQSL() != null && entityEligibility.getApplyForQSL().equalsIgnoreCase("QDD")) {
+            profileInfo.setQDD(true);
+        } else {
+            profileInfo.setQDD(false);
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page2", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        handlePart1EligibilitySaasEvents(form14345, profileInfo, httpServletRequest);
+
+        if (profileInfo.getEntityType().equalsIgnoreCase("QI")) {
+            return "redirect:/secure/QI/form/part1/branch";
+        }
+        return "redirect:/secure/QI/form/part1/address";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/eligibility", params = { "review" }, method = RequestMethod.POST)
+    public String page2ToReviewPart1(Model model, @Valid EntityEligibility entityEligibility, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        
+        validatePart1Eligibility(profileInfo, entityEligibility, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            setPart1EligibilityModelAttr(model, profileInfo, reviewMode);
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            return "page2";
+        }
+
+        form14345.setEligibility(entityEligibility);
+
+        if (entityEligibility.getApplyForQSL() != null && entityEligibility.getApplyForQSL().equalsIgnoreCase("QDD")) {
+            profileInfo.setQDD(true);
+        } else {
+            profileInfo.setQDD(false);
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page2", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        
+        return "redirect:/secure/QI/form/review/general-information/";
+
+    }
+    
+    private void setPart1EligibilityModelAttr(Model model, ProfileInfo profileInfo, ReviewMode reviewMode) {
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+        model.addAttribute("entityType", profileInfo.getEntityType());
+        model.addAttribute("allkyc", form14345UtilsServiceImpl.populateKyc());
+        model.addAttribute("allqddqsl", DropdownGeneratorUtils.qddQslDropdown());
+        model.addAttribute("allchapter3", form14345UtilsServiceImpl.populateChapter3());
+        model.addAttribute("allchapter4", form14345UtilsServiceImpl.populateChapter4(profileInfo.getEntityType()));
+        addRenewalCycleModelAttributes(model, profileInfo);
+    }
+    
+    private void validatePart1Eligibility(ProfileInfo profileInfo, EntityEligibility entityEligibility, Errors bindingResult) {
+        String entityType = profileInfo.getEntityType();
+        String submissionType = profileInfo.getSubmissionType();
+        
+        if (entityType.equalsIgnoreCase("QI")) {
+            if (submissionType.equalsIgnoreCase("AP")) {
+                entityEligibilityValidatorNewApplication.validate(entityEligibility, bindingResult);
+            } else {
+                entityEligibilityValidator.validate(entityEligibility, bindingResult);
+            }
+        }
+        if (entityType.equalsIgnoreCase("WP")) {
+            if (submissionType.equalsIgnoreCase("AP")) {
+                entityEligibilityValidatorWpNewApplication.validate(entityEligibility, bindingResult);
+            } else {
+                entityEligibilityValidatorWp.validate(entityEligibility, bindingResult);
+            }
+        }
+        if (entityType.equalsIgnoreCase("WT")) {
+            if (submissionType.equalsIgnoreCase("AP")) {
+                entityEligibilityValidatorWtNewApplication.validate(entityEligibility, bindingResult);
+            } else {
+                entityEligibilityValidatorWt.validate(entityEligibility, bindingResult);
+            }
+        }
+    }
+    
+    private void handlePart1EligibilitySaasEvents(Form14345 form14345, ProfileInfo profileInfo, HttpServletRequest httpServletRequest) throws IOException {
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        Form14345 beforeUpdateForm14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page2", headers);
+    	String ipAddress = saasServiceImpl.parseXForwardHeader(httpServletRequest);
+        if(ipAddress == null || ipAddress.isEmpty()) {
+        	ipAddress = httpServletRequest.getRemoteAddr();
+        }
+        if (beforeUpdateForm14345.getEligibility().getKycRules() != null 
+                && !beforeUpdateForm14345.getEligibility().getKycRules().equalsIgnoreCase(form14345.getEligibility().getKycRules())) {
+            SaasJson saasJson = new SaasJson();
+            saasJson.setVarData("Old Kyc: " + beforeUpdateForm14345.getEligibility().getKycRules() + " New Kyc: "
+                    + form14345.getEligibility().getKycRules());
+            saasJson.setEntityId(profileInfo.getEntityId());
+            saasJson.setSrcAddr(ipAddress);
+            saasJson.setDeviceIdentifier(ipAddress);
+            saasJson.setStatusCd(SUCCESS_STATUS);
+            saasServiceImpl.setUpAndSubmitJsonObject(profileInfo.getSadiId(), profileInfo.getEntityAliasId(),
+                    saasEventIdEntityScreeningUpdate, true, saasJson);
+        }
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/branch" }, method = RequestMethod.GET)
+    public String getPart1Page3(Model model, Form14345 form14345,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page3", headers);
+        model.addAttribute("form14345", form14345);
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+
+        addRenewalCycleModelAttributes(model, profileInfo);
+        
+        return "page3";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/branch", params = { "part1page2" }, method = RequestMethod.POST)
+    public String page3ToPage2(Model model, Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/part1/eligibility";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/branch", params = { "savepart1page3" }, method = RequestMethod.POST)
+    public String savePart1Page3(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        page3Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page3";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page3", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/part1/branch";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/branch", params = { "part1page4" }, method = RequestMethod.POST)
+    public String page3ToPage4(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        page3Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+
+            return "page3";
+        }
+        reviewMode.setPage3(true);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = submitFormClientImpl.execute(form14345, "page3", profileInfo.getSadiId(),
+                profileInfo.getEntityId(), headers);
+
+        if (form14345.getEntityHasBranch() != null && form14345.getEntityHasBranch().equalsIgnoreCase("Yes")) {
+            return "redirect:/secure/QI/form/part1/add-branch";
+        }
+        return "redirect:/secure/QI/form/part1/address";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/branch", params = { "review" }, method = RequestMethod.POST)
+    public String page3ToReviewPart1(Model model, @Valid Form14345 form14345,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            Errors bindingResult, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page3Validator.validate(form14345, bindingResult);
+        int count = 0;
+        count = bindingResult.getAllErrors().size();
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", count);
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page3";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+              submitFormClientImpl.execute(form14345, "page3", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+
+        return "redirect:/secure/QI/form/review/general-information/";
+    }   
+    
+    @RequestMapping(value = { "/secure/QI/form/part1/add-branch",
+            "/secure/QI/form/part1/add-branch/{page}" }, method = RequestMethod.GET)
+    public String getPart1Page4(Model model, BranchInfo branchInfo,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            Form14345 form14345, @PathVariable Optional<Integer> page, @ModelAttribute("activeInd") Integer activeInd)
+            throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page4", headers);
+        
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+        addPart1AddBranchModelAttr(model, form14345, profileInfo);
+        setPagedList(model, form14345, page, profileInfo.getEntityId());
+
+        return "page4";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/add-branch",
+            "/secure/QI/form/part1/add-branch/{page}/" }, params = { "part1page3" }, method = RequestMethod.POST)
+    public String page4ToPage3(Model model, BranchInfo branchInfo, @PathVariable Optional<Integer> page,
+            @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/part1/branch";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/add-branch",
+            "/secure/QI/form/part1/add-branch/{page}/" }, params = { "savepart1page4" }, method = RequestMethod.POST)
+    public String savePart1Page4(Model model, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            @Valid BranchInfo branchInfo, Errors bindingResult, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @PathVariable Optional<Integer> page,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        branchInfoValidator.validate(branchInfo, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addPart1AddBranchModelAttr(model, form14345, profileInfo);
+            setPagedList(model, form14345, page, profileInfo.getEntityId());
+
+
+            return "page4";
+        }
+        form14345.setNewBranch(branchInfo);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page4", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/part1/add-branch";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/add-branch",
+            "/secure/QI/form/part1/add-branch/{page}/" }, params = { "addBranch" }, method = RequestMethod.POST)
+    public String saveBranchToTable(Model model, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            @Valid BranchInfo branchInfo, Errors bindingResult, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @PathVariable Optional<Integer> page,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        branchInfoValidator.validate(branchInfo, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addPart1AddBranchModelAttr(model, form14345, profileInfo);
+            setPagedList(model, form14345, page, profileInfo.getEntityId());
+
+            return "page4";
+        }
+        
+        form14345.setNewBranch(branchInfo);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page4", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/part1/add-branch";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/add-branch",
+            "/secure/QI/form/part1/add-branch/{page}/" }, params = { "part1page5" }, method = RequestMethod.POST)
+    public String page4ToPage5(Model model, BranchInfo branchInfo,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @PathVariable Optional<Integer> page,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page4", headers);
+
+        model.addAttribute("branchCount", form14345.getBranches().size());
+        model.addAttribute("branch", form14345.getBranches());
+
+        if (form14345.getBranches().isEmpty()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("numOfBranch", form14345.getBranches().size());
+            addPart1AddBranchModelAttr(model, form14345, profileInfo);
+            
+            return "page4";
+        }
+        reviewMode.setPage4(true);
+
+        return "redirect:/secure/QI/form/part1/address";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/add-branch",
+            "/secure/QI/form/part1/add-branch/{page}/" }, params = { "review" }, method = RequestMethod.POST)
+    public String page4ToReviewPart1(Model model, BranchInfo branchInfo,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @PathVariable Optional<Integer> page,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        model.addAttribute("branchCount", form14345.getBranches().size());
+        model.addAttribute("branch", form14345.getBranches());
+
+        if (form14345.getBranches().isEmpty()) {
+            model.addAttribute("numOfBranch", form14345.getBranches().size());
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            addPart1AddBranchModelAttr(model, form14345, profileInfo);
+            setPagedList(model, form14345, page, profileInfo.getEntityId());
+
+            return "page4";
+        }
+
+        return "redirect:/secure/QI/form/review/general-information/";
+    }
+    
+    @RequestMapping(value = "/secure/QI/form/part1/add-branch", params = {"deleteBranch" }, method = RequestMethod.POST)
+    public String deleteBranch(final HttpServletRequest req, Model model,
+            @ModelAttribute("activeInd") Integer activeInd, @ModelAttribute("profileInfo") ProfileInfo profileInfo) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        String entityBranchId = req.getParameter("deleteBranch");
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+            deleteBranchServiceImpl.execute(entityBranchId, profileInfo.getSadiId(), headers);
+
+        return "redirect:/secure/QI/form/part1/add-branch";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/edit/branch-info",
+            "/secure/QI/form/part1/edit/branch-info/{branchId}/" }, method = RequestMethod.GET)
+    public String editBranchFromInfoPage(@PathVariable Optional<String> branchId, Model model, BranchInfo branchInfo,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("form14345") Form14345 form14345)
+            throws IOException {
+        
+        profileInfo.setBranchId(branchId.toString().substring(9, 41));
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        branchInfo = editBranchServiceImpl.execute(profileInfo.getBranchId(), headers, profileInfo.getEntityId());
+        if(branchInfo == null){
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        
+        model.addAttribute("branchInfo", branchInfo);
+        addPart1AddBranchModelAttr(model, form14345, profileInfo);
+
+        return "branch-info-edit-2";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/edit/branch-info",
+            "/secure/QI/form/part1/edit/branch-info/{branchId}/" }, params = { "cancel" }, method = RequestMethod.POST)
+    public String cancelEditBranch(@PathVariable Optional<String> branchId, Model model, BranchInfo branchInfo,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("form14345") Form14345 form14345)
+            throws IOException {
+
+        return "redirect:/secure/QI/form/part1/add-branch";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/edit/branch-info",
+            "/secure/QI/form/part1/edit/branch-info/{branchId}/" }, params = { "submit" }, method = RequestMethod.POST)
+    public String submitEditBranch(@PathVariable Optional<String> branchId, Model model, @Valid BranchInfo branchInfo,
+            Errors bindingResult, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            @ModelAttribute("form14345") Form14345 form14345) throws IOException {
+
+        branchInfoValidator.validate(branchInfo, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            addPart1AddBranchModelAttr(model, form14345, profileInfo);
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            return "branch-info-edit-2";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        updateBranchServiceImpl.execute(branchInfo, profileInfo.getBranchId(), profileInfo.getSadiId(), headers);
+
+        return "redirect:/secure/QI/form/part1/add-branch";
+    }
+    
+    
+    public void addPart1AddBranchModelAttr(Model model, Form14345 form14345, ProfileInfo profileInfo){
+        
+        List<String> branches = new ArrayList<String>();
+        form14345.getBranches().forEach(item -> {
+            if (item.getOtherKycRules() == null && item.getKycRules() != null) {
+                branches.add(item.getKycRules());
+            }
+        });
+        model.addAttribute("usedkyc", branches);
+        model.addAttribute("allkyc", form14345UtilsServiceImpl.populateKyc());
+        model.addAttribute("allCountries", DropdownGeneratorUtils.countryOfBranchDropdown(form14345UtilsServiceImpl.populateCountries()));
+        addRenewalCycleModelAttributes(model, profileInfo);
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/address" }, method = RequestMethod.GET)
+    public String getPart1Page5(Model model, Address address, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, Form14345 form14345,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        MultiValueMap<String, String> header = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page5", header);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+
+        profileInfo = profileServiceClientImpl.execute(profileInfo.getEntityId(), profileInfo.getSadiId(), headers);
+
+        model.addAttribute("address", form14345.getApplicantAddress());
+        addPart1AddressModelAttr(model, profileInfo, reviewMode);
+        
+        return "page5";
+    }
+    
+    @RequestMapping(value = "/secure/QI/form/part1/address", params = { "part1page4" }, method = RequestMethod.POST)
+    public String page5ToPage4(Model model, Address address, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        if (profileInfo != null && profileInfo.getEntityType() != null
+                && profileInfo.getEntityType().equalsIgnoreCase("QI")) {
+                if (form14345.getEntityHasBranch() != null && form14345.getEntityHasBranch().equalsIgnoreCase("Yes")) {
+                    return "redirect:/secure/QI/form/part1/add-branch";
+                } else {
+                    return "redirect:/secure/QI/form/part1/branch";
+                }
+
+        } else {
+            return "redirect:/secure/QI/form/part1/eligibility";
+        }
+
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/address", params = { "savepart1page5" }, method = RequestMethod.POST)
+    public String savePart1Page5(Model model, @Valid Address address, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        addressValidator.validate(address, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addPart1AddressModelAttr(model, profileInfo, reviewMode);
+            return "page5";
+        }
+
+        form14345.setApplicantAddress(address);
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+            submitFormClientImpl.execute(form14345, "page5", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+
+        return "redirect:/secure/QI/form/part1/address";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/address", params = { "part1page6" }, method = RequestMethod.POST)
+    public String page5ToPage6(Model model, @Valid Address address, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        addressValidator.validate(address, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addPart1AddressModelAttr(model, profileInfo, reviewMode);
+            return "page5";
+        }
+        
+        reviewMode.setPage5(true);
+        form14345.setApplicantAddress(address);
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+             submitFormClientImpl.execute(form14345, "page5", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+
+        if (profileInfo.getEntityType().equalsIgnoreCase("QI")) {
+            return "redirect:/secure/QI/form/part1/business-account-description";
+        }
+        return "redirect:/secure/QI/form/part1/business-description";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/address", params = { "review" }, method = RequestMethod.POST)
+    public String page5ToReviewPart1(Model model, @Valid Address address, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        addressValidator.validate(address, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addPart1AddressModelAttr(model, profileInfo, reviewMode);
+            return "page5";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+            submitFormClientImpl.execute(form14345, "page5", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+
+        return "redirect:/secure/QI/form/review/general-information/";
+    }
+    
+    private void addPart1AddressModelAttr(Model model, ProfileInfo profileInfo, ReviewMode reviewMode) {
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+        model.addAttribute("entityType", profileInfo.getEntityType());
+        model.addAttribute("allCountries", DropdownGeneratorUtils.countryOfAddressDropdown(form14345UtilsServiceImpl.populateCountries()));
+        model.addAttribute("hasBranch", profileInfo.isHasBranch());
+        model.addAttribute("allStates", form14345UtilsServiceImpl.populateStates());
+        addRenewalCycleModelAttributes(model, profileInfo);
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/business-description" }, method = RequestMethod.GET)
+    public String getPart1Page6(Model model, Form14345 form14345,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page6", headers);
+        model.addAttribute("form14345", form14345);
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+
+        addRenewalCycleModelAttributes(model, profileInfo);
+        return "page6";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/business-description", params = {
+            "part1page5" }, method = RequestMethod.POST)
+    public String page6ToPage5(Model model, Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/part1/address";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/business-description", params = {
+            "savepart1page6" }, method = RequestMethod.POST)
+    public String savePart1Page6(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page6Validator.validate(form14345, bindingResult);
+        
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page6";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page6", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        return "redirect:/secure/QI/form/part1/business-description";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/business-description", params = {
+            "part1page7" }, method = RequestMethod.POST)
+    public String page6ToPage7(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page6Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page6";
+        }
+        reviewMode.setPage6(true);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page6", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/part1/account-description";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/business-description", params = {
+            "review" }, method = RequestMethod.POST)
+    public String page6ToReviewPart1(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page6Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            return "page6";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page6", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/review/general-information/";
+    }
+
+    
+    @RequestMapping(value = { "/secure/QI/form/part1/account-description" }, method = RequestMethod.GET)
+    public String getPart1Page7(Model model, Form14345 form14345,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page7", headers);
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+        model.addAttribute("form14345", form14345);
+        addRenewalCycleModelAttributes(model, profileInfo);
+
+        return "page7";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/account-description", params = {
+            "part1page6" }, method = RequestMethod.POST)
+    public String page7ToPage6(Model model, Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/part1/business-description";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/account-description", params = {
+            "savepart1page7" }, method = RequestMethod.POST)
+    public String savePart1Page7(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page7Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page7";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page7", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/part1/account-description";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/account-description", params = {
+            "part1page8" }, method = RequestMethod.POST)
+    public String page7ToPage8(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page7Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page7";
+        }
+        reviewMode.setPage7(true);
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page7", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        return "redirect:/secure/QI/form/part1/responsible-officer";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/account-description", params = {
+            "review" }, method = RequestMethod.POST)
+    public String page7ToReviewPart1(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page7Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page7";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page7", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/review/general-information/";
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/business-account-description" }, method = RequestMethod.GET)
+    public String getPart1Page8(Model model, Form14345 form14345,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page8", headers);
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+        model.addAttribute("form14345", form14345);
+        addRenewalCycleModelAttributes(model, profileInfo);
+        return "page8";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/business-account-description", params = {
+            "part1page7" }, method = RequestMethod.POST)
+    public String page8ToPage7(Model model, Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/part1/address";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/business-account-description", params = {
+            "savepart1page8" }, method = RequestMethod.POST)
+    public String savePart1Page8(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page8Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page8";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page8", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+        return "redirect:/secure/QI/form/part1/business-account-description";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/business-account-description", params = {
+            "part1page9" }, method = RequestMethod.POST)
+    public String page8ToPage9(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page8Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page8";
+        }
+        reviewMode.setPage8(true);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page8", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/part1/responsible-officer";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/business-account-description", params = {
+            "review" }, method = RequestMethod.POST)
+    public String page8ToReviewPart1(Model model, @Valid Form14345 form14345, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        page8Validator.validate(form14345, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addRenewalCycleModelAttributes(model, profileInfo);
+            return "page8";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        submitFormClientImpl.execute(form14345, "page8", profileInfo.getSadiId(), profileInfo.getEntityId(), headers);
+
+        return "redirect:/secure/QI/form/review/general-information";
+    }
+
+
+    @RequestMapping(value = { "/secure/QI/form/part1/responsible-officer" }, method = RequestMethod.GET)
+    public String getPart1Page9(Model model, ResponsibleOfficerContactPerson responsibleOfficerContactPerson,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page9", headers);
+        model.addAttribute("responsibleOfficerContactPerson", form14345.getResponsiblOfficer());
+        addPart1ResponsibleOfficerModelAttr(model, profileInfo, reviewMode, form14345);
+        return "page9";
+    }
+    
+    @RequestMapping(value = "/secure/QI/form/part1/responsible-officer", params = {"part1page8" }, method = RequestMethod.POST)
+    public String page9ToPage8(Model model, ResponsibleOfficerContactPerson responsibleOfficerContactPerson,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        if (profileInfo.getEntityType().equalsIgnoreCase("QI")) {
+            return "redirect:/secure/QI/form/part1/business-account-description";
+        }
+        return "redirect:/secure/QI/form/part1/account-description";
+
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/responsible-officer", params = {"savepart1page9" }, method = RequestMethod.POST)
+    public String savePart1Page9(HttpServletRequest httpServletRequest, Model model,
+            @Valid ResponsibleOfficerContactPerson responsibleOfficerContactPerson, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        // TODO: get ContactInfo object to compare emails
+        responsibleOfficerContactPersonValidator.setContactInfo(profileInfo.getContactInfo());
+        responsibleOfficerContactPersonValidator.validate(responsibleOfficerContactPerson, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getErrorCount());
+            addPart1ResponsibleOfficerModelAttr(model, profileInfo, reviewMode, form14345);
+            return "page9";
+        }
+
+        form14345.setResponsiblOfficer(responsibleOfficerContactPerson);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        headers.add(saasSrcAddrHeader, saasServiceImpl.parseXForwardHeader(httpServletRequest));
+        submitFormClientImpl.execute(form14345, "page9", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                headers);
+        
+        return "redirect:/secure/QI/form/part1/responsible-officer";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/responsible-officer", params = {
+            "part1page10" }, method = RequestMethod.POST)
+    public String page9ToPage10(HttpServletRequest httpServletRequest, Model model,
+            @Valid ResponsibleOfficerContactPerson responsibleOfficerContactPerson, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        // TODO: get ContactInfo object to compare emails
+        responsibleOfficerContactPersonValidator.setContactInfo(profileInfo.getContactInfo());
+        responsibleOfficerContactPersonValidator.validate(responsibleOfficerContactPerson, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getErrorCount());
+            addPart1ResponsibleOfficerModelAttr(model, profileInfo, reviewMode, form14345);
+            return "page9";
+        }
+        reviewMode.setPage9(true);
+        form14345.setResponsiblOfficer(responsibleOfficerContactPerson);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+            headers.add(saasSrcAddrHeader, saasServiceImpl.parseXForwardHeader(httpServletRequest));
+            submitFormClientImpl.execute(form14345, "page9", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+            
+        return "redirect:/secure/QI/form/part1/contact-person";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/responsible-officer", params = { "review" }, method = RequestMethod.POST)
+    public String page9ToReviewPart1(Model model,
+            @Valid ResponsibleOfficerContactPerson responsibleOfficerContactPerson, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        // TODO: get ContactInfo object to compare emails
+        responsibleOfficerContactPersonValidator.setContactInfo(profileInfo.getContactInfo());
+        responsibleOfficerContactPersonValidator.validate(responsibleOfficerContactPerson, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getErrorCount());
+            addPart1ResponsibleOfficerModelAttr(model, profileInfo, reviewMode, form14345);
+            return "page9";
+        }
+
+        form14345.setResponsiblOfficer(responsibleOfficerContactPerson);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+            submitFormClientImpl.execute(form14345, "page9", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+        return "redirect:/secure/QI/form/review/general-information/";
+    }
+    
+    private void addPart1ResponsibleOfficerModelAttr(Model model, ProfileInfo profileInfo, ReviewMode reviewMode, Form14345 form14345) {
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());     
+        model.addAttribute("entityType", profileInfo.getEntityType());
+        model.addAttribute("allCountries", DropdownGeneratorUtils.countryOfAddressDropdown(form14345UtilsServiceImpl.populateCountries()));
+        model.addAttribute("allStates", form14345UtilsServiceImpl.populateStates());
+        addRenewalCycleModelAttributes(model, profileInfo);
+    }
+
+    @RequestMapping(value = { "/secure/QI/form/part1/contact-person" }, method = RequestMethod.GET)
+    public String getPart1Page10(Model model, ResponsibleOfficerContactPerson responsibleOfficerContactPerson,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(profileInfo.getEntityId(), "page10", headers);
+
+        model.addAttribute("responsibleOfficerContactPerson", form14345.getContactPerson());
+        addPart1ContactPersonModelAttr(model, profileInfo, reviewMode);
+        return "page10";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/contact-person", params = {
+            "part1page9" }, method = RequestMethod.POST)
+    public String page10ToPage9(Model model, ResponsibleOfficerContactPerson responsibleOfficerContactPerson,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("activeInd") Integer activeInd) {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        return "redirect:/secure/QI/form/part1/responsible-officer";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/contact-person", params = {
+            "savepart1page10" }, method = RequestMethod.POST)
+    public String savePart1Page10(HttpServletRequest httpServletRequest, Model model,
+            @Valid ResponsibleOfficerContactPerson responsibleOfficerContactPerson, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        // TODO: get ContactInfo object to compare emails
+        contactPersonValidator.setContactInfo(profileInfo.getContactInfo());
+        contactPersonValidator.validate(responsibleOfficerContactPerson, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getErrorCount());
+            addPart1ContactPersonModelAttr(model, profileInfo, reviewMode);
+            return "page10";
+        }
+
+        form14345.setContactPerson(responsibleOfficerContactPerson);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+            headers.add(saasSrcAddrHeader, saasServiceImpl.parseXForwardHeader(httpServletRequest));
+            submitFormClientImpl.execute(form14345, "page10", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+        return "redirect:/secure/QI/form/part1/contact-person";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/contact-person", params = {
+            "part2page11" }, method = RequestMethod.POST)
+    public String page10ToPage11(HttpServletRequest httpServletRequest, Model model,
+            @Valid ResponsibleOfficerContactPerson contactPerson, Errors bindingResult,
+            @ModelAttribute("profileInfo") ProfileInfo profileInfo, @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("form14345") Form14345 form14345, @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        // TODO: get ContactInfo object to compare emails
+        contactPersonValidator.setContactInfo(profileInfo.getContactInfo());
+        contactPersonValidator.validate(contactPerson, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addPart1ContactPersonModelAttr(model, profileInfo, reviewMode);
+            return "page10";
+        }
+        reviewMode.setPage10(true);
+        form14345.setContactPerson(contactPerson);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+            headers.add(saasSrcAddrHeader, saasServiceImpl.parseXForwardHeader(httpServletRequest));
+            submitFormClientImpl.execute(form14345, "page10", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+     
+        return "redirect:/secure/QI/form/part2/account-assets/";
+    }
+
+    @RequestMapping(value = "/secure/QI/form/part1/contact-person", params = { "review" }, method = RequestMethod.POST)
+    public String page10ToReviewPart1(Model model, @Valid ResponsibleOfficerContactPerson contactPerson,
+            Errors bindingResult, @ModelAttribute("profileInfo") ProfileInfo profileInfo,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, @ModelAttribute("form14345") Form14345 form14345,
+            @ModelAttribute("activeInd") Integer activeInd) throws IOException {
+
+        if (activeInd == 0) {
+            return "redirect:/secure/qi-login/select-account/";
+        }
+
+        // TODO: get ContactInfo object to compare emails
+        contactPersonValidator.setContactInfo(profileInfo.getContactInfo());
+        contactPersonValidator.validate(contactPerson, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("count", bindingResult.getAllErrors().size());
+            addPart1ContactPersonModelAttr(model, profileInfo, reviewMode);
+            return "page10";
+        }
+
+        form14345.setContactPerson(contactPerson);
+
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+                    submitFormClientImpl.execute(form14345, "page10", profileInfo.getSadiId(), profileInfo.getEntityId(),
+                    headers);
+
+        return "redirect:/secure/QI/form/review/general-information/";
+    }
+
+    
+    private void addPart1ContactPersonModelAttr(Model model, ProfileInfo profileInfo, ReviewMode reviewMode) {
+        model.addAttribute("isInReviewMode", reviewMode.isInReviewMode());
+        model.addAttribute("allCountries", DropdownGeneratorUtils.countryOfAddressDropdown(form14345UtilsServiceImpl.populateCountries()));
+        model.addAttribute("allStates", form14345UtilsServiceImpl.populateStates());
+        model.addAttribute("isPage10", true);
+        addRenewalCycleModelAttributes(model, profileInfo);
+    }
+
+
+
+    private boolean isWithinDatesRange(LocalDate beginDate, LocalDate endDate) {
+        boolean isWithinRange = false;
+
+        if (beginDate == null || endDate == null) {
+            return isWithinRange;
+        }
+
+        LocalDate today = LocalDate.now();
+        if (today.isEqual(beginDate) || today.isEqual(endDate)
+                || (today.isAfter(beginDate) && today.isBefore(endDate))) {
+            isWithinRange = true;
+        }
+
+        return isWithinRange;
+    }
+
+    /**
+     * 
+     * @param model
+     * @param page
+     */
+    protected void setPagedList(Model model, Form14345 form14345, Optional<Integer> page, String id) throws IOException {
+
+        int pageNum = page.orElse(1);
+
+        List<BranchInfo> list = new ArrayList<BranchInfo>();
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        form14345 = getFormClientImpl.execute(id, "page4", headers);
+
+            form14345.getBranches().forEach(item -> {
+                if (item.getCountry() != null) {
+                    String country = form14345UtilsServiceImpl.populateCountries().get(item.getCountry());
+                    if (item.getOtherCountry() != null) {
+                        country = country + " - " + item.getOtherCountry();
+                    }
+                    item.setTheCountry(country);
+                }
+                if (item.getKycRules() != null) {
+                    String kycRule = form14345UtilsServiceImpl.populateKyc().get(item.getKycRules());
+                    if (item.getOtherKycRules() != null) {
+                        kycRule = kycRule + " - " + item.getOtherKycRules();
+                    }
+                    item.setThekycRules(kycRule);
+                }
+            });
+
+            list = form14345.getBranches();
+       
+        PagedListHolder<BranchInfo> pagedListHolder = new PagedListHolder<>(list);
+        // Set # of items (rows) in list per page
+        pagedListHolder.setPageSize(getPaginationPageSize());
+        // get total number of pages
+        Integer maxpages = pagedListHolder.getPageCount();
+
+        model.addAttribute(getMaxPageKey(), maxpages);
+        model.addAttribute(getFirstElementKey(), pagedListHolder.getFirstElementOnPage() + 1);
+        model.addAttribute(getLastElementKey(), pagedListHolder.getLastElementOnPage() + 1);
+        model.addAttribute(getMaxElementKey(), pagedListHolder.getNrOfElements());
+        model.addAttribute("branchCount", list.size());
+
+        int numOfBranches = 0;
+        int numBranches = 0;
+
+        if (pageNum <= maxpages && (maxpages > 1)) {
+
+            if (pagedListHolder.getPageList().size() == 5) {
+
+                numOfBranches = pageNum * 5;
+
+            } else if (pagedListHolder.getPageList().size() == 4) {
+
+                numOfBranches = pageNum * 4;
+            } else if (pagedListHolder.getPageList().size() == 3) {
+
+                numOfBranches = pageNum * 3;
+            } else if (pagedListHolder.getPageList().size() == 2) {
+
+                numOfBranches = pageNum * 2;
+            } else{
+                numOfBranches = pageNum * 5 - 4;
+            }               
+            numBranches = pageNum * 5 - 4;
+
+            if (pageNum == maxpages) {
+
+                numOfBranches = list.size();
+            }
+
+        } else if (pageNum <= maxpages && (maxpages == 1)) {
+
+            if (pagedListHolder.getPageList().size() == 5) {
+
+                numOfBranches = 5;
+
+            } else if (pagedListHolder.getPageList().size() == 4) {
+
+                numOfBranches = 4;
+            } else if (pagedListHolder.getPageList().size() == 3) {
+
+                numOfBranches = 3;
+            } else if (pagedListHolder.getPageList().size() == 2) {
+
+                numOfBranches = 2;
+            } else{
+                numOfBranches = 1;
+            }
+
+            numBranches = 1;
+        }
+
+        if (pageNum < 1 || pageNum > maxpages) {
+            pagedListHolder.setPage(0);
+            model.addAttribute(getPageKey(), page);
+            model.addAttribute(getListKey(), pagedListHolder.getPageList());
+            model.addAttribute("numOfBranches", numOfBranches);
+            model.addAttribute("numBranches", numBranches);
+
+        } else if (pageNum <= maxpages) {
+            pagedListHolder.setPage(pageNum - 1);
+            pageNum = pagedListHolder.getPage() + 1;
+            model.addAttribute(getPageKey(), pageNum);
+            model.addAttribute(getListKey(), pagedListHolder.getPageList());
+            model.addAttribute("numOfBranches", numOfBranches);
+            model.addAttribute("numBranches", numBranches);
+        }
+    }
+
+    /**
+     * @return the listKey
+     */
+    public String getListKey() {
+        return listKey;
+    }
+
+    /**
+     * @param listKey
+     *            the listKey to set
+     */
+    public void setListKey(String listKey) {
+        this.listKey = listKey;
+    }
+
+    /**
+     * @return the branchInfoValidator
+     */
+    public Validator getBranchInfoValidator() {
+
+        return branchInfoValidator;
+    }
+
+    /**
+     * @param branchInfoValidator
+     *            the branchInfoValidator to set
+     */
+    public void setBranchInfoValidator(Validator branchInfoValidator) {
+
+        this.branchInfoValidator = branchInfoValidator;
+    }
+
+    /**
+     * @return the page6Validator
+     */
+    public Validator getPage6Validator() {
+        return page6Validator;
+    }
+
+    /**
+     * @param page6Validator
+     *            the page6Validator to set
+     */
+    public void setPage6Validator(Validator page6Validator) {
+        this.page6Validator = page6Validator;
+    }
+
+    /**
+     * @return the page7Validator
+     */
+    public Validator getPage7Validator() {
+        return page7Validator;
+    }
+
+    /**
+     * @param page7Validator
+     *            the page7Validator to set
+     */
+    public void setPage7Validator(Validator page7Validator) {
+        this.page7Validator = page7Validator;
+    }
+
+    /**
+     * @return the page8Validator
+     */
+    public Validator getPage8Validator() {
+        return page8Validator;
+    }
+
+    /**
+     * @param page8Validator
+     *            the page8Validator to set
+     */
+    public void setPage8Validator(Validator page8Validator) {
+        this.page8Validator = page8Validator;
+    }
+
+    /**
+     * @return the entityInfoValidator
+     */
+    public Validator getEntityInfoValidator() {
+        return entityInfoValidator;
+    }
+
+    /**
+     * @param entityInfoValidator
+     *            the entityInfoValidator to set
+     */
+    public void setEntityInfoValidator(Validator entityInfoValidator) {
+        this.entityInfoValidator = entityInfoValidator;
+    }
+
+    /**
+     * @return the entityEligibilityValidator
+     */
+    public Validator getEntityEligibilityValidator() {
+        return entityEligibilityValidator;
+    }
+
+    /**
+     * @param entityEligibilityValidator
+     *            the entityEligibilityValidator to set
+     */
+    public void setEntityEligibilityValidator(Validator entityEligibilityValidator) {
+        this.entityEligibilityValidator = entityEligibilityValidator;
+    }
+
+    /**
+     * @return the addressValidator
+     */
+    public Validator getAddressValidator() {
+        return addressValidator;
+    }
+
+    /**
+     * @param addressValidator
+     *            the addressValidator to set
+     */
+    public void setAddressValidator(Validator addressValidator) {
+        this.addressValidator = addressValidator;
+    }
+
+    /**
+     * @return the entityEligibilityValidatorWp
+     */
+    public Validator getEntityEligibilityValidatorWp() {
+        return entityEligibilityValidatorWp;
+    }
+
+    /**
+     * @param entityEligibilityValidatorWp
+     *            the entityEligibilityValidatorWp to set
+     */
+    public void setEntityEligibilityValidatorWp(Validator entityEligibilityValidatorWp) {
+        this.entityEligibilityValidatorWp = entityEligibilityValidatorWp;
+    }
+
+    /**
+     * @return the entityEligibilityValidatorWt
+     */
+    public Validator getEntityEligibilityValidatorWt() {
+        return entityEligibilityValidatorWt;
+    }
+
+    /**
+     * @param entityEligibilityValidatorWt
+     *            the entityEligibilityValidatorWt to set
+     */
+    public void setEntityEligibilityValidatorWt(Validator entityEligibilityValidatorWt) {
+        this.entityEligibilityValidatorWt = entityEligibilityValidatorWt;
+    }
+
+    /**
+     * @return the page3Validator
+     */
+    public Validator getPage3Validator() {
+        return page3Validator;
+    }
+
+    /**
+     * @param page3Validator
+     *            the page3Validator to set
+     */
+    public void setPage3Validator(Validator page3Validator) {
+        this.page3Validator = page3Validator;
+    }
+
+    /**
+     * @return the entityInfoValidatorForNewApplication
+     */
+    public Validator getEntityInfoValidatorForNewApplication() {
+        return entityInfoValidatorForNewApplication;
+    }
+
+    /**
+     * @param entityInfoValidatorForNewApplication
+     *            the entityInfoValidatorForNewApplication to set
+     */
+    public void setEntityInfoValidatorForNewApplication(Validator entityInfoValidatorForNewApplication) {
+        this.entityInfoValidatorForNewApplication = entityInfoValidatorForNewApplication;
+    }
+
+    /**
+     * @return the entityEligibilityValidatorNewApplication
+     */
+    public Validator getEntityEligibilityValidatorNewApplication() {
+        return entityEligibilityValidatorNewApplication;
+    }
+
+    /**
+     * @param entityEligibilityValidatorNewApplication
+     *            the entityEligibilityValidatorNewApplication to set
+     */
+    public void setEntityEligibilityValidatorNewApplication(Validator entityEligibilityValidatorNewApplication) {
+        this.entityEligibilityValidatorNewApplication = entityEligibilityValidatorNewApplication;
+    }
+
+    /**
+     * @return the entityEligibilityValidatorWpNewApplication
+     */
+    public Validator getEntityEligibilityValidatorWpNewApplication() {
+        return entityEligibilityValidatorWpNewApplication;
+    }
+
+    /**
+     * @param entityEligibilityValidatorWpNewApplication
+     *            the entityEligibilityValidatorWpNewApplication to set
+     */
+    public void setEntityEligibilityValidatorWpNewApplication(Validator entityEligibilityValidatorWpNewApplication) {
+        this.entityEligibilityValidatorWpNewApplication = entityEligibilityValidatorWpNewApplication;
+    }
+
+    /**
+     * @return the entityEligibilityValidatorWtNewApplication
+     */
+    public Validator getEntityEligibilityValidatorWtNewApplication() {
+        return entityEligibilityValidatorWtNewApplication;
+    }
+
+    /**
+     * @param entityEligibilityValidatorWtNewApplication
+     *            the entityEligibilityValidatorWtNewApplication to set
+     */
+    public void setEntityEligibilityValidatorWtNewApplication(Validator entityEligibilityValidatorWtNewApplication) {
+        this.entityEligibilityValidatorWtNewApplication = entityEligibilityValidatorWtNewApplication;
+    }
+
+    @ModelAttribute("activeInd")
+    public Integer getActiveInd(@ModelAttribute("profileInfo") ProfileInfo profileInfo) {
+        MultiValueMap<String, String> headers = HttpHeaderUtil.generateMessageIdHttpHeader();
+        try {
+            return recordUserLoggedInClientImpl.getLoginIndicator(profileInfo.getEntityId(), profileInfo.getSadiId(),
+                    headers);
+        } catch (NumberFormatException e) {
+            logger.error("Error converting the indicator(String) in response to indicator(Integer)");
+        } catch (RestClientException e) {
+            throw new QIUIException(QIUIErrorCode.UI_IDT_COMMUNICATION_FAILURE, e,
+                    headers.get(MESSAGE_ID_KEY).toString());
+        } catch (IOException e) {
+            throw new QIUIException(QIUIErrorCode.UI_UNABLE_PARSE_RESPONSE, e, headers.get(MESSAGE_ID_KEY).toString());
+        }
+        return null;
+    }
+    
+    
+    protected void addRenewalCycleModelAttributes(Model model, ProfileInfo profileInfo) {
+        boolean isInRenewalCycle = false;
+        if (profileInfo.getAgreementExtendedDueDate() != null) {
+            isInRenewalCycle = isWithinDatesRange(profileInfo.getAgreementOpenDate(),
+                    profileInfo.getAgreementExtendedDueDate());
+        } else {
+            isInRenewalCycle = isWithinDatesRange(profileInfo.getAgreementOpenDate(),
+                    profileInfo.getAgreementDueDate());
+        }
+        model.addAttribute("isWithinRenewalCycle", isInRenewalCycle);
+        model.addAttribute("isWithinExtendedRenewalDates",
+                isWithinDatesRange(profileInfo.getAgreementOpenDate(), profileInfo.getAgreementExtendedDueDate()));
+
     }
 }
