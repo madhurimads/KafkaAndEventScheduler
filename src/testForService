@@ -1,59 +1,62 @@
-package gov.irs.fatca.qi.service.user;
+public class FileContentUtils {
 
-import gov.irs.fatca.qi.ui.security.AuthenticatedUserDetails;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.security.core.userdetails.UserDetails;
+    private static final String DOC_FORMAT = "doc";
+    private static final String DOCX_FORMAT = "docx";
+    private static final String XLS_FORMAT = "xls";
+    private static final String XLSX_FORMAT = "xlsx";
+    private static final String TXT_FORMAT = "txt";
+    private static final String PNG_FORMAT = "png";
+    private static final String PDF_FORMAT = "pdf";
+    private static final String JPG_FORMAT = "jpg";
+    private static final String JPEG_FORMAT = "jpeg";
 
-import java.util.Collection;
+    private static final String DOC_CONTENT_TYPE = "application/doc";
+    private static final String DOCX_CONTENT_TYPE = "application/docx";
+    private static final String XLS_CONTENT_TYPE = "application/xls";
+    private static final String XLSX_CONTENT_TYPE = "application/xlsx";
+    private static final String TXT_CONTENT_TYPE = "text/plain";
+    private static final String PNG_CONTENT_TYPE = "image/png";
+    private static final String PDF_CONTENT_TYPE = "application/pdf";
+    private static final String JPG_CONTENT_TYPE = "image/jpg";
+    private static final String JPEG_CONTENT_TYPE = "image/jpeg";
 
-import static org.junit.jupiter.api.Assertions.*;
+    public static String getHtmlContentType(String fileFormat) {
+        String contentType;
+        switch (fileFormat.toLowerCase()) {
 
-class SiteMinderUserDetailsServiceTest {
+        case DOC_FORMAT:
+            contentType = DOC_CONTENT_TYPE;
+            break;
+        case DOCX_FORMAT:
+            contentType = DOCX_CONTENT_TYPE;
+            break;
+        case XLS_FORMAT:
+            contentType = XLS_CONTENT_TYPE;
+            break;
+        case XLSX_FORMAT:
+            contentType = XLSX_CONTENT_TYPE;
+            break;
+        case TXT_FORMAT:
+            contentType = TXT_CONTENT_TYPE;
+            break;
+        case JPG_FORMAT:
+            contentType = JPG_CONTENT_TYPE;
+            break;
+        case JPEG_FORMAT:
+            contentType = JPEG_CONTENT_TYPE;
+            break;
+        case PNG_FORMAT:
+            contentType = PNG_CONTENT_TYPE;
+            break;
+        case PDF_FORMAT:
+            contentType = PDF_CONTENT_TYPE;
+            break;
+        default:
+            contentType = TXT_CONTENT_TYPE;
+        }
 
-    private SiteMinderUserDetailsService userDetailsService;
+        return contentType;
 
-    @BeforeEach
-    void setUp() {
-        userDetailsService = new SiteMinderUserDetailsService();
     }
 
-    @Test
-    void testLoadUserByUsername_returnsAuthenticatedUserDetails() {
-        // Arrange
-        String sadiId = "TEST_USER";
-
-        // Act
-        UserDetails userDetails = userDetailsService.loadUserByUsername(sadiId);
-
-        // Assert
-        assertNotNull(userDetails);
-        assertTrue(userDetails instanceof AuthenticatedUserDetails);
-
-        assertEquals(sadiId, userDetails.getUsername());
-        assertEquals("N/A", userDetails.getPassword());
-        assertTrue(userDetails.isAccountNonExpired());
-        assertTrue(userDetails.isAccountNonLocked());
-        assertTrue(userDetails.isCredentialsNonExpired());
-        assertTrue(userDetails.isEnabled());
-
-        Collection authorities = userDetails.getAuthorities();
-        assertEquals(1, authorities.size());
-        assertTrue(authorities.stream().anyMatch(auth -> auth.getAuthority().equals("ROLE_USER")));
-    }
-
-    @Test
-    void testCustomSecurityUserRoleAndPassword() {
-        // Arrange
-        userDetailsService.setDummySecurityUserPassword("secret");
-        userDetailsService.setSecurityUserRole("ROLE_ADMIN");
-
-        // Act
-        UserDetails userDetails = userDetailsService.loadUserByUsername("admin_user");
-
-        // Assert
-        assertEquals("secret", userDetails.getPassword());
-        assertTrue(userDetails.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN")));
-    }
 }
