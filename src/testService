@@ -1,165 +1,89 @@
 package gov.irs.fatca.qi.core.util;
 
-import java.text.MessageFormat;
-import java.util.Arrays;
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
-import java.util.Optional;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-/**
- * @author thomas.t.nelson
- *
- */
-abstract public class StringUtils {
+import static org.junit.jupiter.api.Assertions.*;
 
-    protected static final String DEFAULT_WILDCARD = "%";
+class StringUtilsTest {
 
-    /**
-     * Return String with Wildcards using the DEFAULT_WILDCARD
-     * 
-     * @param original
-     * @param length
-     * @return
-     */
-    public static String getStringWithWildcards(String original, int length) {
-        return getStringWithWildcards(original, length, DEFAULT_WILDCARD);
+    @Test
+    void testGetStringWithWildcards_exactLength() {
+        String result = StringUtils.getStringWithWildcards("ABC", 3);
+        assertEquals("ABC", result);
     }
 
-    /**
-     * Return String with Wildcards using the DEFAULT_WILDCARD
-     * 
-     * 
-     * 
-     * @param original
-     * @param length
-     * @param wildcard
-     * @return
-     */
-    public static String getStringWithWildcards(String original, int length, String wildcard) {
-        String originalWithWildcards = "";
-
-        if (!org.springframework.util.StringUtils.isEmpty(original) && original.length() == length) {
-            originalWithWildcards = original;
-        } else if (!org.springframework.util.StringUtils.isEmpty(original) && original.length() < length) {
-            originalWithWildcards = StringUtils.concatenateWithNulls("", wildcard, original, wildcard);
-        } else {
-            originalWithWildcards = wildcard;
-        }
-        return originalWithWildcards;
-
+    @Test
+    void testGetStringWithWildcards_shorterLength() {
+        String result = StringUtils.getStringWithWildcards("AB", 3);
+        assertEquals("%AB%", result);
     }
 
-    /**
-     * 
-     * @param expression
-     * @param context
-     * @return
-     */
-    public static String parseStringWithParams(String pattern, Object... params) {
-        MessageFormat mf = new MessageFormat(pattern);
-        return mf.format(params);
+    @Test
+    void testGetStringWithWildcards_nullInput() {
+        String result = StringUtils.getStringWithWildcards(null, 3);
+        assertEquals("%", result);
     }
 
-    /**
-     * 
-     * @param delimiter
-     * @param one
-     * @param two
-     * @return String without nulls
-     */
-    public static String concatenateWithNulls(String delimiter, String one, String two) {
-        return Stream.of(one, two).filter(x -> x != null).map(x -> x.trim()).collect(Collectors.joining(delimiter));
+    @Test
+    void testGetStringWithWildcards_customWildcard() {
+        String result = StringUtils.getStringWithWildcards("X", 3, "*");
+        assertEquals("*X*", result);
     }
 
-    /**
-     * 
-     * @param delimiter
-     * @param one
-     * @param two
-     * @Param three
-     * @return String without nulls
-     */
-    public static String concatenateWithNulls(String delimiter, String one, String two, String three) {
-        return Stream.of(one, two, three).filter(x -> x != null).map(x -> x.trim())
-                .collect(Collectors.joining(delimiter));
+    @Test
+    void testParseStringWithParams() {
+        String result = StringUtils.parseStringWithParams("Hello {0}, you have {1} new messages", "Alice", 5);
+        assertEquals("Hello Alice, you have 5 new messages", result);
     }
 
-    /**
-     * 
-     * @param delimiter
-     * @param one
-     * @param two
-     * @Param three
-     * @Param four
-     * @return String without nulls
-     */
-    public static String concatenateWithNulls(String delimiter, String one, String two, String three, String four) {
-        return Stream.of(one, two, three, four).filter(x -> x != null).map(x -> x.trim())
-                .collect(Collectors.joining(delimiter));
+    @Test
+    void testConcatenateWithNulls_twoStrings() {
+        String result = StringUtils.concatenateWithNulls("-", "A", null);
+        assertEquals("A", result);
     }
 
-    /**
-     * 
-     * @param delimiter
-     * @param one
-     * @param two
-     * @param three
-     * @param four
-     * @param five
-     * @return
-     */
-    public static String concatenateWithNulls(String delimiter, String one, String two, String three, String four,
-            String five) {
-        return Stream.of(one, two, three, four, five).filter(x -> x != null).map(x -> x.trim())
-                .collect(Collectors.joining(delimiter));
+    @Test
+    void testConcatenateWithNulls_threeStrings() {
+        String result = StringUtils.concatenateWithNulls(" ", "A", null, "B");
+        assertEquals("A B", result);
     }
 
-    /**
-     * 
-     * @param delimiter
-     * @param input
-     * @param index
-     * @return
-     */
-    public static String insertAtIndexWithNulls(String delimiter, String input, int index) {
-
-        return Optional.ofNullable(input).map(s -> new StringBuilder(s).insert(index, delimiter).toString()).orElse("");
-
+    @Test
+    void testConcatenateWithNulls_fiveStrings() {
+        String result = StringUtils.concatenateWithNulls("_", "A", null, "B", "C", null);
+        assertEquals("A_B_C", result);
     }
 
-    /**
-     * 
-     * @param input
-     *            original string to clean up
-     * @return String with any instances of "null" removed
-     */
-    public static String removeNulls(String input) {
-        String sansNulls = input;
-        sansNulls = sansNulls.replace(", null", "");
-        sansNulls = sansNulls.replace("null, ", "");
-        sansNulls = sansNulls.replace("null", "");
-        return sansNulls;
+    @Test
+    void testInsertAtIndexWithNulls_valid() {
+        String result = StringUtils.insertAtIndexWithNulls("-", "12345", 2);
+        assertEquals("12-345", result);
     }
 
-    /**
-     * 
-     * @param delimiter
-     * @param input
-     * @return
-     */
-    public static List<String> splitStringOnDelimiter(String delimiter, String input) {
-        List<String> stringElements = Stream.of(input).map(w -> w.split(delimiter)).flatMap(Arrays::stream)
-                .collect(Collectors.toList());
-        return stringElements;
-
+    @Test
+    void testInsertAtIndexWithNulls_nullInput() {
+        String result = StringUtils.insertAtIndexWithNulls("-", null, 2);
+        assertEquals("", result);
     }
 
-    public static List<String> splitStringOnDot(String input) {
-        List<String> stringElements = splitStringOnDelimiter(Pattern.quote("."), input);
-        return stringElements;
-
+    @Test
+    void testRemoveNulls_variations() {
+        String input = "null, Apple, null, Banana, null";
+        String result = StringUtils.removeNulls(input);
+        assertEquals(" Apple,  Banana, ", result);
     }
 
+    @Test
+    void testSplitStringOnDelimiter() {
+        List<String> result = StringUtils.splitStringOnDelimiter(",", "A,B,C");
+        assertEquals(List.of("A", "B", "C"), result);
+    }
+
+    @Test
+    void testSplitStringOnDot() {
+        List<String> result = StringUtils.splitStringOnDot("gov.irs.fatca");
+        assertEquals(List.of("gov", "irs", "fatca"), result);
+    }
 }
