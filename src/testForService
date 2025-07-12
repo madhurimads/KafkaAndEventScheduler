@@ -1,77 +1,59 @@
 package gov.irs.fatca.qi.service.user;
 
-import java.util.ArrayList;
+import gov.irs.fatca.qi.ui.security.AuthenticatedUserDetails;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.security.core.userdetails.UserDetails;
+
 import java.util.Collection;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationProvider;
+import static org.junit.jupiter.api.Assertions.*;
 
-import gov.irs.fatca.qi.service.impl.CheckUserExistenceClientImpl;
-import gov.irs.fatca.qi.ui.security.AuthenticatedUserDetails;
+class SiteMinderUserDetailsServiceTest {
 
-public class SiteMinderUserDetailsService implements UserDetailsService {
+    private SiteMinderUserDetailsService userDetailsService;
 
-    protected Logger logger = LoggerFactory.getLogger(this.getClass());
-
-    private static final String DEFAULT_SECURITY_USER_ROLE = "ROLE_USER";
-    private static final String DEFAULT_SECURITY_USER_PASSWORD = "N/A";
-
-    private String dummySecurityUserPassword = DEFAULT_SECURITY_USER_PASSWORD;
-    private String securityUserRole = DEFAULT_SECURITY_USER_ROLE;
-
-    @Autowired
-    CheckUserExistenceClientImpl checkUserExistenceClientImpl;
-
-    @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-
-        /* username is the sadi Id coming from the Siteminder HTTP headers */
-        String sadiId = username;
-
-        // Get this user details from database and set its roles also here
-        Collection<GrantedAuthority> authorities = new ArrayList<GrantedAuthority>();
-        authorities.add(new SimpleGrantedAuthority(securityUserRole));
-
-        AuthenticatedUserDetails authenticatedUserDetails = new AuthenticatedUserDetails(sadiId,
-                dummySecurityUserPassword, true, true, true, true, authorities);
-
-        return authenticatedUserDetails;
+    @BeforeEach
+    void setUp() {
+        userDetailsService = new SiteMinderUserDetailsService();
     }
 
-    /**
-     * @return the dummySecurityUserPassword
-     */
-    public String getDummySecurityUserPassword() {
-        return dummySecurityUserPassword;
+    @Test
+    void testLoadUserByUsername_returnsAuthenticatedUserDetails() {
+        // Arrange
+        String sadiId = "TEST_USER";
+
+        // Act
+        UserDetails userDetails = userDetailsService.loadUserByUsername(sadiId);
+
+        // Assert
+        assertNotNull(userDetails);
+        assertTrue(userDetails instanceof AuthenticatedUserDetails);
+
+        assertEquals(sadiId, userDetails.getUsername());
+        assertEquals("N/A", userDetails.getPassword());
+        assertTrue(userDetails.isAccountNonExpired());
+        assertTrue(userDetails.isAccountNonLocked());
+        assertTrue(userDetails.isCredentialsNonExpired());
+        assertTrue(userDetails.isEnabled());
+
+        Collection authorities = userDetails.getAuthorities();
+        assertEquals(1, authorities.size());
+        assertTrue(authorities.stream().anyMatch(auth -> auth.getAuthority().equals("ROLE_USER")));
     }
 
-    /**
-     * @param dummySecurityUserPassword
-     *            the dummySecurityUserPassword to set
-     */
-    public void setDummySecurityUserPassword(String dummySecurityUserPassword) {
-        this.dummySecurityUserPassword = dummySecurityUserPassword;
-    }
+    @Test
+    void testCustomSecurityUserRoleAndPassword() {
+        // Arrange
+        userDetailsService.setDummySecurityUserPassword("secret");
+        userDetailsService.setSecurityUserRole("ROLE_ADMIN");
 
-    /**
-     * @return the securityUserRole
-     */
-    public String getSecurityUserRole() {
-        return securityUserRole;
-    }
+        // Act
+        UserDetails userDetails = userDetailsService.loadUserByUsername("admin_user");
 
-    /**
-     * @param securityUserRole
-     *            the securityUserRole to set
-     */
-    public void setSecurityUserRole(String securityUserRole) {
-        this.securityUserRole = securityUserRole;
+        // Assert
+        assertEquals("secret", userDetails.getPassword());
+        assertTrue(userDetails.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN")));
     }
 }
