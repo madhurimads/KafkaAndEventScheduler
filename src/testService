@@ -1,135 +1,42 @@
-package gov.irs.fatca.qi.service.impl;
+@Test
+    void getUserGuide_whenActiveIndexZero_redirectsToLogin() throws Exception {
+        String result = controller.getUserGuide(model, new ProfileInfo(), 0);
+        assertEquals("redirect:/secure/qi-login/select-account/", result);
 
-import java.util.HashMap;
-import java.util.Map;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestTemplate;
-
-import gov.irs.fatca.qi.domain.service.PiiServiceCallWrapper;
-import gov.irs.fatca.qi.exception.QIUIErrorCode;
-import gov.irs.fatca.qi.exception.QIUIException;
-import gov.irs.fatca.qi.service.PiiInfoService;
-
-/**
- * Sadi PII data web service client implementation.
- * 
- * Reference: SADI Application Integration Playbook - Appendix C
- *
- */
-
-@Component
-public class PiiInfoServiceImpl implements PiiInfoService {
-
-    protected static final Logger logger = LoggerFactory.getLogger(PiiInfoServiceImpl.class);
-
-    @Value("${bsl.host}")
-    private String bslHost;
-    
-    @Value("${bsl.host2}")
-    private String bslHost2;
-
-    @Autowired
-    RestTemplate restTemplate;
-
-    @Override
-    public Map<String, String> getUserPiiInfo(String sadiIrsUUID) {
-        Map<String, String> piiAttributes = new HashMap<String, String>();
-
-        PiiServiceCallWrapper response = null;
-
-        try {
-            // Pull PII attributes for sadiIrsUUID
-            response = executeSearch(sadiIrsUUID);
-        } catch (Exception e) {
-            logger.error("Failed to retrieve response = " + e.getMessage(), e);
-            throw new QIUIException(QIUIErrorCode.SADI_UNEXPECTED_ERROR, e, null);
-        }
-        
-        if(response.getErrorCode() != null ) {
-        	
-        	if(response.getErrorCode() == 500) {
-        		throw new QIUIException(QIUIErrorCode.SADI_UNEXPECTED_ERROR, null, null);
-        	} else {
-        		determineSadiError(response.getErrorCode());
-        	}
-        
-        } else {
-        	
-        	piiAttributes = response.getPiiAttributes();
-        }
-		return piiAttributes; 
+        verifyNoInteractions(profileServiceClientImpl, updateSubmissionStatusClientImpl);
     }
 
-    
-	private PiiServiceCallWrapper executeSearch(String sadiIrsUUID) throws Exception {
-    	
-    	return this.sendBssPostRequest("/pii-user-info", new PiiServiceCallWrapper(sadiIrsUUID), PiiServiceCallWrapper.class);
-    	
+    @Test
+    void getUserGuide_whenProfileSubmissionTypeAP_returnsNewApplicationGuide() throws Exception {
+        ProfileInfo profile = new ProfileInfo();
+        profile.setEntityId(1L);
+        profile.setSadiId("SADI123");
+        profile.setSubmissionType("AP");
+
+        // Service returns updated profile
+        when(profileServiceClientImpl.execute(anyLong(), anyString(), any())).thenReturn(profile);
+
+        String result = controller.getUserGuide(model, profile, 1);
+
+        assertEquals("user-guide-new-application", result);
+
+        verify(updateSubmissionStatusClientImpl)
+                .execute(eq(profile.getEntityId()), eq(profile.getSadiId()), any(), eq("IN"), any());
+        verify(profileServiceClientImpl, times(2))
+                .execute(eq(profile.getEntityId()), eq(profile.getSadiId()), any());
+        verify(model).addAttribute("profileInfo", profile);
     }
 
-    private void determineSadiError(int errorCode) {
+    @Test
+    void getUserGuide_whenProfileSubmissionTypeNonAP_returnsGuide() throws Exception {
+        ProfileInfo profile = new ProfileInfo();
+        profile.setEntityId(2L);
+        profile.setSadiId("SADI456");
+        profile.setSubmissionType("BP"); // not AP
 
-        if (errorCode == QIUIErrorCode.SADI_BADPARAM_REQUESTED.getNumber()) {
-            throw new QIUIException(QIUIErrorCode.SADI_BADPARAM_REQUESTED, null, null);
-        } else if (errorCode == QIUIErrorCode.SADI_UUID_NOT_FOUND.getNumber()) {
-            throw new QIUIException(QIUIErrorCode.SADI_UUID_NOT_FOUND, null, null);
-        } else if (errorCode == QIUIErrorCode.SADI_PARAM_NOT_SPECIFIED.getNumber()) {
-            throw new QIUIException(QIUIErrorCode.SADI_PARAM_NOT_SPECIFIED, null, null);
-        } else if (errorCode == QIUIErrorCode.SADI_BODY_MEDIA_TYPE_UNS.getNumber()) {
-            throw new QIUIException(QIUIErrorCode.SADI_BODY_MEDIA_TYPE_UNS, null, null);
-        } else if (errorCode == QIUIErrorCode.SADI_HTTP_METHOD_UNS.getNumber()) {
-            throw new QIUIException(QIUIErrorCode.SADI_HTTP_METHOD_UNS, null, null);
-        } else if (errorCode == QIUIErrorCode.SADI_SERVICE_ID_NOT_AUTHORIZED.getNumber()) {
-            throw new QIUIException(QIUIErrorCode.SADI_SERVICE_ID_NOT_AUTHORIZED, null, null);
-        } else if (errorCode == QIUIErrorCode.SADI_MESSAGE_NOT_READABLE.getNumber()) {
-            throw new QIUIException(QIUIErrorCode.SADI_MESSAGE_NOT_READABLE, null, null);
-        }
-    }
-    
-  
-    
-    //TODO below for abstract parent of all service calls to BSL for active-active
-    
-    /**
-     * Builds the full request mapping to hit for bss
-     * @param requestMapping for bsl controllers
-     * @return rest mapping
-     */
-    private String getBslRestMapping(String controllerMapping, boolean usePrimaryBssEndpoint){
-    	StringBuilder uri = null;
-    	if(usePrimaryBssEndpoint) {
-    		uri = new StringBuilder(bslHost);
-    	} else {
-    		uri = new StringBuilder(bslHost2);
-    	}
-        uri.append(controllerMapping);
-        return uri.toString();
-    }
-    
-    
-    
-    
-    /**
-     * Sends Request to bss rest service
-     * @param requestMapping
-     * @param request
-     * @param responseType
-     * @return expected return from bsl
-     */
-    protected <T> T sendBssPostRequest(String controllerMapping, Object request, Class<T> responseType){
-        try {
-        	return restTemplate.postForObject(getBslRestMapping(controllerMapping, true), request, responseType);
-        } catch (ResourceAccessException e) {
-        	return restTemplate.postForObject(getBslRestMapping(controllerMapping, false), request, responseType);
-        }
-    }
-    
+        when(profileServiceClientImpl.execute(anyLong(), anyString(), any())).thenReturn(profile);
 
-    
-}
+        String result = controller.getUserGuide(model, profile, 1);
+
+        assertEquals("user-guide", result);
+    }
