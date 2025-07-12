@@ -1,147 +1,165 @@
-import gov.irs.fatca.qi.controller.AdminEntityInfoServiceController;
-import gov.irs.fatca.qi.domain.Error;
-import gov.irs.fatca.qi.domain.admin.EntitySubmissionInfo;
-import gov.irs.fatca.qi.domain.admin.SubmissionInfo;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.*;
-import org.springframework.http.HttpEntity;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
+package gov.irs.fatca.qi.core.util;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import java.text.MessageFormat;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-class AdminEntityInfoServiceControllerTest {
+/**
+ * @author thomas.t.nelson
+ *
+ */
+abstract public class StringUtils {
 
-    @InjectMocks
-    AdminEntityInfoServiceController controller;
+    protected static final String DEFAULT_WILDCARD = "%";
 
-    @Mock
-    RestTemplate mockRestTemplate;
-
-    @Captor
-    ArgumentCaptor<HttpEntity<String>> stringHttpEntityCaptor;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-        controller.restTemplate = mockRestTemplate;
-
-        controller.dalHost = "http://dal-service";
-        controller.getAdminEntityInfoServiceEnabled = true;
-        controller.updateSubmissionInfoServiceEnabled = true;
-        controller.updateEntitySubmissionInfoServiceEnabled = true;
-
-        controller.getAdminEntityInfoService = "/getAdmin";
-        controller.updateSubmissionInfoService = "/updateSubmission";
-        controller.updateEntitySubmissionInfoService = "/updateEntity";
+    /**
+     * Return String with Wildcards using the DEFAULT_WILDCARD
+     * 
+     * @param original
+     * @param length
+     * @return
+     */
+    public static String getStringWithWildcards(String original, int length) {
+        return getStringWithWildcards(original, length, DEFAULT_WILDCARD);
     }
 
-    @Test
-    void retriveSubmission_validRequest_shouldCallRestTemplate() {
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-        headers.add("messageid", "test-message");
+    /**
+     * Return String with Wildcards using the DEFAULT_WILDCARD
+     * 
+     * 
+     * 
+     * @param original
+     * @param length
+     * @param wildcard
+     * @return
+     */
+    public static String getStringWithWildcards(String original, int length, String wildcard) {
+        String originalWithWildcards = "";
 
-        when(mockRestTemplate.postForObject(anyString(), any(), eq(Object.class), any(), any()))
-                .thenReturn("mocked-response");
+        if (!org.springframework.util.StringUtils.isEmpty(original) && original.length() == length) {
+            originalWithWildcards = original;
+        } else if (!org.springframework.util.StringUtils.isEmpty(original) && original.length() < length) {
+            originalWithWildcards = StringUtils.concatenateWithNulls("", wildcard, original, wildcard);
+        } else {
+            originalWithWildcards = wildcard;
+        }
+        return originalWithWildcards;
 
-        Object result = controller.retriveSubmission("SADI123", "info", headers);
-
-        assertEquals("mocked-response", result);
-        verify(mockRestTemplate, times(1))
-                .postForObject(contains(controller.getAdminEntityInfoService), any(), eq(Object.class), any(), any());
     }
 
-    @Test
-    void retriveSubmission_serviceDisabled_returnsStaticInfo() {
-        controller.getAdminEntityInfoServiceEnabled = false;
-
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-        Object result = controller.retriveSubmission("SADI123", "info", headers);
-
-        assertTrue(result instanceof SubmissionInfo);
-        SubmissionInfo info = (SubmissionInfo) result;
-        assertEquals("peter", info.getLastUpdatedBy());
+    /**
+     * 
+     * @param expression
+     * @param context
+     * @return
+     */
+    public static String parseStringWithParams(String pattern, Object... params) {
+        MessageFormat mf = new MessageFormat(pattern);
+        return mf.format(params);
     }
 
-    @Test
-    void retriveSubmission_invalidInputs_returnsError() {
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-        headers.add("messageid", "invalid-test");
-
-        Object result = controller.retriveSubmission(null, "badRequestType", headers);
-        assertTrue(result instanceof Error);
-        assertEquals("BSL-9064", ((Error) result).getCode());
+    /**
+     * 
+     * @param delimiter
+     * @param one
+     * @param two
+     * @return String without nulls
+     */
+    public static String concatenateWithNulls(String delimiter, String one, String two) {
+        return Stream.of(one, two).filter(x -> x != null).map(x -> x.trim()).collect(Collectors.joining(delimiter));
     }
 
-    @Test
-    void updateSubmission_success_shouldPostToRestTemplate() {
-        SubmissionInfo submissionInfo = new SubmissionInfo();
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-        headers.add("messageid", "update-test");
-
-        when(mockRestTemplate.postForObject(anyString(), any(), eq(Object.class), any(), any(), any()))
-                .thenReturn("updated");
-
-        Object result = controller.updateSubmission("SEID1", "ENTID1", "type", submissionInfo, headers);
-
-        assertEquals("updated", result);
-        verify(mockRestTemplate).postForObject(
-                contains(controller.updateSubmissionInfoService), any(), eq(Object.class),
-                eq("SEID1"), eq("ENTID1"), eq("type")
-        );
+    /**
+     * 
+     * @param delimiter
+     * @param one
+     * @param two
+     * @Param three
+     * @return String without nulls
+     */
+    public static String concatenateWithNulls(String delimiter, String one, String two, String three) {
+        return Stream.of(one, two, three).filter(x -> x != null).map(x -> x.trim())
+                .collect(Collectors.joining(delimiter));
     }
 
-    @Test
-    void updateSubmission_disabled_returnsStaticValue() {
-        controller.updateSubmissionInfoServiceEnabled = false;
-
-        Object result = controller.updateSubmission("SEID1", "ENTID1", "type", new SubmissionInfo(),
-                new LinkedMultiValueMap<>());
-
-        assertEquals("111111", result);
+    /**
+     * 
+     * @param delimiter
+     * @param one
+     * @param two
+     * @Param three
+     * @Param four
+     * @return String without nulls
+     */
+    public static String concatenateWithNulls(String delimiter, String one, String two, String three, String four) {
+        return Stream.of(one, two, three, four).filter(x -> x != null).map(x -> x.trim())
+                .collect(Collectors.joining(delimiter));
     }
 
-    @Test
-    void updateSubmission_exceptionThrown_returnsError() {
-        SubmissionInfo submissionInfo = new SubmissionInfo();
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-        headers.add("messageid", "msg-id");
-
-        when(mockRestTemplate.postForObject(anyString(), any(), eq(Object.class), any(), any(), any()))
-                .thenThrow(new RuntimeException("Test Exception"));
-
-        Object result = controller.updateSubmission("SEID", "ENTID", "UT", submissionInfo, headers);
-
-        assertTrue(result instanceof Error);
-        assertEquals("3029", ((Error) result).getCode());
+    /**
+     * 
+     * @param delimiter
+     * @param one
+     * @param two
+     * @param three
+     * @param four
+     * @param five
+     * @return
+     */
+    public static String concatenateWithNulls(String delimiter, String one, String two, String three, String four,
+            String five) {
+        return Stream.of(one, two, three, four, five).filter(x -> x != null).map(x -> x.trim())
+                .collect(Collectors.joining(delimiter));
     }
 
-    @Test
-    void updateEntitySubmissionInfo_success_shouldReturnHttpStatusOK() {
-        EntitySubmissionInfo entitySubmissionInfo = new EntitySubmissionInfo();
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+    /**
+     * 
+     * @param delimiter
+     * @param input
+     * @param index
+     * @return
+     */
+    public static String insertAtIndexWithNulls(String delimiter, String input, int index) {
 
-        Object result = controller.updateEntitySubmissionInfo("SEID1", "ENTID1", entitySubmissionInfo, headers);
+        return Optional.ofNullable(input).map(s -> new StringBuilder(s).insert(index, delimiter).toString()).orElse("");
 
-        assertEquals(org.springframework.http.HttpStatus.OK, result);
     }
 
-    @Test
-    void updateEntitySubmissionInfo_exceptionThrown_returnsError() {
-        EntitySubmissionInfo entitySubmissionInfo = new EntitySubmissionInfo();
-        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
-        headers.add("messageid", "err-id");
-
-        doThrow(new RuntimeException("fail"))
-                .when(mockRestTemplate)
-                .postForObject(anyString(), any(), eq(Object.class), any(), any());
-
-        Object result = controller.updateEntitySubmissionInfo("SEID", "ENTID", entitySubmissionInfo, headers);
-
-        assertTrue(result instanceof Error);
-        assertEquals("3030", ((Error) result).getCode());
+    /**
+     * 
+     * @param input
+     *            original string to clean up
+     * @return String with any instances of "null" removed
+     */
+    public static String removeNulls(String input) {
+        String sansNulls = input;
+        sansNulls = sansNulls.replace(", null", "");
+        sansNulls = sansNulls.replace("null, ", "");
+        sansNulls = sansNulls.replace("null", "");
+        return sansNulls;
     }
+
+    /**
+     * 
+     * @param delimiter
+     * @param input
+     * @return
+     */
+    public static List<String> splitStringOnDelimiter(String delimiter, String input) {
+        List<String> stringElements = Stream.of(input).map(w -> w.split(delimiter)).flatMap(Arrays::stream)
+                .collect(Collectors.toList());
+        return stringElements;
+
+    }
+
+    public static List<String> splitStringOnDot(String input) {
+        List<String> stringElements = splitStringOnDelimiter(Pattern.quote("."), input);
+        return stringElements;
+
+    }
+
 }
