@@ -1,179 +1,147 @@
-package gov.irs.fatca.qi.controller;
-
-import static gov.irs.fatca.qi.strategy.util.HttpHeaderUtil.MESSAGE_ID;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
-import org.owasp.esapi.ESAPI;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.bind.WebDataBinder;
-import org.springframework.web.bind.annotation.InitBinder;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestTemplate;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-
+import gov.irs.fatca.qi.controller.AdminEntityInfoServiceController;
 import gov.irs.fatca.qi.domain.Error;
 import gov.irs.fatca.qi.domain.admin.EntitySubmissionInfo;
 import gov.irs.fatca.qi.domain.admin.SubmissionInfo;
-import gov.irs.fatca.qi.strategy.util.HttpParamUtil;
-import gov.irs.fatca.qi.validator.fields.FieldsValidator;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
-@RestController
-public class AdminEntityInfoServiceController {
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-    protected Logger logger = LoggerFactory.getLogger(AdminEntityInfoServiceController.class);
+class AdminEntityInfoServiceControllerTest {
 
-    private static final String MESSAGE_ID_KEY = MESSAGE_ID;
+    @InjectMocks
+    AdminEntityInfoServiceController controller;
 
-    @Value("${dal.host}")
-    private String dalHost;
+    @Mock
+    RestTemplate mockRestTemplate;
 
-    @Value("${get.admin.entity.info.service.enabled}")
-    private boolean getAdminEntityInfoServiceEnabled;
+    @Captor
+    ArgumentCaptor<HttpEntity<String>> stringHttpEntityCaptor;
 
-    @Value("${update.submission.info.service.enabled}")
-    private boolean updateSubmissionInfoServiceEnabled;
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+        controller.restTemplate = mockRestTemplate;
 
-    @Value("${update.entity.submission.info.service.enabled}")
-    private boolean updateEntitySubmissionInfoServiceEnabled;
+        controller.dalHost = "http://dal-service";
+        controller.getAdminEntityInfoServiceEnabled = true;
+        controller.updateSubmissionInfoServiceEnabled = true;
+        controller.updateEntitySubmissionInfoServiceEnabled = true;
 
-    @Value("${get.admin.entity.info.service}")
-    private String getAdminEntityInfoService;
-
-    @Value("${update.submission.info.service}")
-    private String updateSubmissionInfoService;
-
-    @Value("${update.entity.submission.info.service}")
-    private String updateEntitySubmissionInfoService;
-
-    private ObjectMapper objMapper = new ObjectMapper();
-
-    private RestTemplate restTemplate = new RestTemplate();
-
-    private FieldsValidator fieldsValidator = new FieldsValidator();
-    @InitBinder
-    public void initBinder(WebDataBinder binder) {
-        binder.setAllowedFields("entityId", "sadiId", "seid", "dummyBody", "entitySubmissionInfo", "submissionInfo",
-                "headers", "updateType");
+        controller.getAdminEntityInfoService = "/getAdmin";
+        controller.updateSubmissionInfoService = "/updateSubmission";
+        controller.updateEntitySubmissionInfoService = "/updateEntity";
     }
 
-    @RequestMapping(method = RequestMethod.POST, value = "/GetAdminEntityInfoService")
-    public Object retriveSubmission(@RequestParam(value = "entityId") String entityId,
-            @RequestParam(value = "requestType") String requestType,
-            @RequestHeader MultiValueMap<String, String> headers) {
+    @Test
+    void retriveSubmission_validRequest_shouldCallRestTemplate() {
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.add("messageid", "test-message");
 
+        when(mockRestTemplate.postForObject(anyString(), any(), eq(Object.class), any(), any()))
+                .thenReturn("mocked-response");
+
+        Object result = controller.retriveSubmission("SADI123", "info", headers);
+
+        assertEquals("mocked-response", result);
+        verify(mockRestTemplate, times(1))
+                .postForObject(contains(controller.getAdminEntityInfoService), any(), eq(Object.class), any(), any());
+    }
+
+    @Test
+    void retriveSubmission_serviceDisabled_returnsStaticInfo() {
+        controller.getAdminEntityInfoServiceEnabled = false;
+
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        Object result = controller.retriveSubmission("SADI123", "info", headers);
+
+        assertTrue(result instanceof SubmissionInfo);
+        SubmissionInfo info = (SubmissionInfo) result;
+        assertEquals("peter", info.getLastUpdatedBy());
+    }
+
+    @Test
+    void retriveSubmission_invalidInputs_returnsError() {
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.add("messageid", "invalid-test");
+
+        Object result = controller.retriveSubmission(null, "badRequestType", headers);
+        assertTrue(result instanceof Error);
+        assertEquals("BSL-9064", ((Error) result).getCode());
+    }
+
+    @Test
+    void updateSubmission_success_shouldPostToRestTemplate() {
         SubmissionInfo submissionInfo = new SubmissionInfo();
-        Object obj = null;
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.add("messageid", "update-test");
 
-        if (getAdminEntityInfoServiceEnabled) {
-            try {
-                // Register the data type support offered by Jackson DataType
-                // JSR310 libs
-                objMapper.findAndRegisterModules();
+        when(mockRestTemplate.postForObject(anyString(), any(), eq(Object.class), any(), any(), any()))
+                .thenReturn("updated");
 
-                String requestHeader = "requestHeader";
-                HttpEntity<String> httpEntity = new HttpEntity<String>(requestHeader, headers);
+        Object result = controller.updateSubmission("SEID1", "ENTID1", "type", submissionInfo, headers);
 
-                // Pass alone form14345 from DAL WS
-
-                boolean hasValidAllHttpParams = HttpParamUtil.validateHttpParameters(entityId);
-                boolean hasValidSadiId = false;
-                if (entityId == null || entityId.isEmpty())
-                    hasValidSadiId = true;
-                else
-                    hasValidSadiId = fieldsValidator.validateSadiId(entityId);
-                boolean hasValidHttpEntity = fieldsValidator.validateSqlInjection(httpEntity.toString());
-                boolean hasValidRequestType = HttpParamUtil.validateHttpParameters(requestType);
-                boolean hasValidHttpParameters = (hasValidAllHttpParams && hasValidSadiId && hasValidHttpEntity
-                        && hasValidRequestType);        
-
-                if (hasValidHttpParameters) {
-                    obj = restTemplate.postForObject(dalHost + getAdminEntityInfoService, httpEntity, Object.class,
-                            entityId, requestType);
-                } else {
-                    return new Error("BSL-9064", "BSL", "BSL processing failure",
-                            headers.get(MESSAGE_ID_KEY).toString());
-                }
-            } catch (Exception e) {
-                logger.error("BSL - Failed to get form from DAL =" + ESAPI.encoder().decodeForHTML(e.getMessage()), ESAPI.encoder().decodeForHTML(e.toString()));
-                return new Error("3033", "BSL", "BSL processing failure", headers.get(MESSAGE_ID_KEY).toString());
-
-            }
-        } else {
-
-            submissionInfo.setEffectiveDate(null);
-            submissionInfo.setLastStatusUpdateDate(null);
-            submissionInfo.setDueDate(null);
-            submissionInfo.setExtendedDueDate(null);
-            submissionInfo.setLastUpdatedBy("peter");
-            submissionInfo.setAgreementStatus("Initiated");
-            submissionInfo.setStatusChangeReasons("No Reasons at all");
-            submissionInfo.setLastOverrideExplanation("it is what it is");
-            submissionInfo.setLastCannedMessage("insufficient");
-            submissionInfo.setAgreementNote("this is the renewal of agreement note");
-            obj = submissionInfo;
-        }
-
-        return obj;
+        assertEquals("updated", result);
+        verify(mockRestTemplate).postForObject(
+                contains(controller.updateSubmissionInfoService), any(), eq(Object.class),
+                eq("SEID1"), eq("ENTID1"), eq("type")
+        );
     }
 
-    @RequestMapping(method = RequestMethod.POST, value = {"/UpdateSubmissionInfoService","/UpdateSubmissionInfoService/"})
-    public Object updateSubmission(@RequestParam(value = "seid") String seid,
-            @RequestParam(value = "entityId") String entityId, @RequestParam(value = "updateType") String updateType,
-            @RequestBody SubmissionInfo submissionInfo, @RequestHeader MultiValueMap<String, String> headers) {
-    	
-        Object obj = new Object();
-        if (updateSubmissionInfoServiceEnabled) {
-            try {
-                HttpEntity<SubmissionInfo> httpEntity = new HttpEntity<SubmissionInfo>(submissionInfo, headers);
-                obj = restTemplate.postForObject(dalHost + updateSubmissionInfoService, httpEntity, Object.class, seid,
-                        entityId, updateType);
-            } catch (Exception e) {
-                logger.error("BSL - Failed to submit form to DAL = " + ESAPI.encoder().decodeForHTML(e.getMessage()), ESAPI.encoder().decodeForHTML(e.toString()));
-                return new Error("3029", "BSL", "BSL processing failure", headers.get(MESSAGE_ID_KEY).toString());
-            }
-        } else {
-            obj = "111111";
-        }
+    @Test
+    void updateSubmission_disabled_returnsStaticValue() {
+        controller.updateSubmissionInfoServiceEnabled = false;
 
-        return obj;
+        Object result = controller.updateSubmission("SEID1", "ENTID1", "type", new SubmissionInfo(),
+                new LinkedMultiValueMap<>());
+
+        assertEquals("111111", result);
     }
 
-    @RequestMapping(method = RequestMethod.POST, value = "/UpdateEntitySubmissionInfoService")
-    public Object updateEntitySubmissionInfo(@RequestParam(value = "seid") String seid,
-            @RequestParam(value = "entityId") String entityId, @RequestBody EntitySubmissionInfo entitySubmissionInfo,
-            @RequestHeader MultiValueMap<String, String> headers) { 
-    	
-        if (updateEntitySubmissionInfoServiceEnabled) {
-            try {
-                HttpEntity<EntitySubmissionInfo> httpEntity = new HttpEntity<EntitySubmissionInfo>(entitySubmissionInfo,
-                        headers);
-                restTemplate.postForObject(dalHost + updateEntitySubmissionInfoService, httpEntity, Object.class, seid,
-                        entityId);
-            } catch (Exception e) {
-                logger.error("BSL - Failed to submit form to DAL = " + ESAPI.encoder().decodeForHTML(e.getMessage()), ESAPI.encoder().decodeForHTML(e.toString()));
-                return new Error("3030", "BSL", "BSL processing failure", headers.get(MESSAGE_ID_KEY).toString());
-            }
-        }
+    @Test
+    void updateSubmission_exceptionThrown_returnsError() {
+        SubmissionInfo submissionInfo = new SubmissionInfo();
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.add("messageid", "msg-id");
 
-        return HttpStatus.OK;
+        when(mockRestTemplate.postForObject(anyString(), any(), eq(Object.class), any(), any(), any()))
+                .thenThrow(new RuntimeException("Test Exception"));
+
+        Object result = controller.updateSubmission("SEID", "ENTID", "UT", submissionInfo, headers);
+
+        assertTrue(result instanceof Error);
+        assertEquals("3029", ((Error) result).getCode());
+    }
+
+    @Test
+    void updateEntitySubmissionInfo_success_shouldReturnHttpStatusOK() {
+        EntitySubmissionInfo entitySubmissionInfo = new EntitySubmissionInfo();
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+
+        Object result = controller.updateEntitySubmissionInfo("SEID1", "ENTID1", entitySubmissionInfo, headers);
+
+        assertEquals(org.springframework.http.HttpStatus.OK, result);
+    }
+
+    @Test
+    void updateEntitySubmissionInfo_exceptionThrown_returnsError() {
+        EntitySubmissionInfo entitySubmissionInfo = new EntitySubmissionInfo();
+        MultiValueMap<String, String> headers = new LinkedMultiValueMap<>();
+        headers.add("messageid", "err-id");
+
+        doThrow(new RuntimeException("fail"))
+                .when(mockRestTemplate)
+                .postForObject(anyString(), any(), eq(Object.class), any(), any());
+
+        Object result = controller.updateEntitySubmissionInfo("SEID", "ENTID", entitySubmissionInfo, headers);
+
+        assertTrue(result instanceof Error);
+        assertEquals("3030", ((Error) result).getCode());
     }
 }
