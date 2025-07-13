@@ -1,89 +1,1555 @@
-package gov.irs.fatca.qi.core.util;
 
-import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import jakarta.annotation.PostConstruct;
 
-class StringUtilsTest {
+import org.owasp.esapi.ESAPI;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.SessionAttributes;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-    @Test
-    void testGetStringWithWildcards_exactLength() {
-        String result = StringUtils.getStringWithWildcards("ABC", 3);
-        assertEquals("ABC", result);
+import gov.irs.fatca.qi.cert.strategy.util.ResponseEvaluationUtils;
+import gov.irs.fatca.qi.domain.cert.disp.CompositeQuestionnairePage;
+import gov.irs.fatca.qi.domain.cert.disp.CompositeQuestionnaireRequest;
+import gov.irs.fatca.qi.domain.cert.disp.CompositeQuestionnaireRequest.CompositeQuestionnaireRequestBuilder;
+import gov.irs.fatca.qi.domain.cert.disp.Element;
+import gov.irs.fatca.qi.domain.cert.disp.ExternalElementsProvider;
+import gov.irs.fatca.qi.domain.cert.disp.MutabilityContext;
+import gov.irs.fatca.qi.domain.cert.disp.PageParameter;
+import gov.irs.fatca.qi.domain.cert.disp.QuestionnairePage;
+import gov.irs.fatca.qi.domain.cert.disp.ResponseEvaluator;
+import gov.irs.fatca.qi.domain.entity.CcgMemberDetail;
+import gov.irs.fatca.qi.domain.entity.ReviewMode;
+import gov.irs.fatca.qi.service.CertificationService;
+import gov.irs.fatca.qi.ui.security.AuthenticatedUserRoleUtils;
+
+@Controller
+@SessionAttributes({ "ccgMemberDetail", "reviewMode" })
+public class CCGMemberQiCertificationPartFourController {
+
+    private static final Logger logger = LoggerFactory.getLogger(CCGMemberQiCertificationPartFourController.class);
+
+    // TODO update to v4 after confirmation on styling
+    public static final String COMP_TEMPLATE = "cert-composite-page-v4-for_ccgmembers";
+    public static final String TEMPLATE = "cert-page-v3-for-ccmembers";
+    public static final int TOTAL_STEPS = 7;
+    public static final String LANDING_PAGE = "redirect:/secure/qi-landing/";
+    public static final String IS_LEAD = "isLead";
+
+    // CCG members list URL
+    private static final String CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST = CertificationCCGMembersController.SECURE_CERT_QI_COMPLIANCE_GROUP_MEMBER_URL;
+    private static final String CCG_MEMBER_DETAIL = "ccgMemberDetail";
+    private static final String REVIEW_MODE = "reviewMode";
+    
+    // Review Mode Completion Key
+    public static final String PART_FOUR_COMPLETE = "memberPart4Complete";
+
+
+    @Autowired
+    private CertificationService certificationService;
+
+    private CertControllerUtils ccu;
+    
+    private ResponseEvaluationUtils responseEvaluationUtils;
+
+    @PostConstruct
+    public void init() {
+        ccu = new CertControllerUtils(TOTAL_STEPS);
+        responseEvaluationUtils = new ResponseEvaluationUtils();
+    }
+    
+    @Value("${ccg.part5.year.eligible}")
+    private int yearForPartFive;    
+
+    /*
+     * CCG Member QI Part 4
+     */
+    // CCG Member Part 4 Step 1a
+    public static final String QI_CCG_MEMBER_P4_GEN_INFO_URL = "/secure/cert/ccg-member/qi/part4/general-information/";
+    public static final String QI_CCG_MEMBER_CERT_P4_GEN_INFO_STEP = "1a";
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_URL, method = RequestMethod.GET)
+    public String getPage16(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+        
+        String pageId = "16";
+        CompositeQuestionnaireRequest request = null;
+        CompositeQuestionnaireRequestBuilder bb = CompositeQuestionnaireRequest.builder();
+        
+        bb.add(PageParameter.page(Integer.valueOf(pageId), MutabilityContext.UPDATE));
+       
+          request =  bb.build();
+        CompositeQuestionnairePage compPage = certificationService.getCompositeQuestionnairePage(
+                ccgMemberDetail.getCertificationId(), request);
+        addPage16Attrs(model, pageId, compPage);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return COMP_TEMPLATE;
     }
 
-    @Test
-    void testGetStringWithWildcards_shorterLength() {
-        String result = StringUtils.getStringWithWildcards("AB", 3);
-        assertEquals("%AB%", result);
+    private void addPage16Attrs(Model model, String pageId, CompositeQuestionnairePage compPage) {
+        List<Element> elements = compPage.getPage(Integer.valueOf(pageId))
+                                         .getElements();
+        elements.addAll(compPage.getElements());
+        model.addAttribute("container", compPage);
+        model.addAttribute("primaryPage", compPage.getPage(Integer.valueOf(pageId)));
+        model.addAttribute("elements", elements);
+        model.addAttribute("stepNum", ccu.stepLabel(QI_CCG_MEMBER_CERT_P4_GEN_INFO_STEP));
+        model.addAttribute("formActionURL", ccu.asFormActionURL(QI_CCG_MEMBER_P4_GEN_INFO_URL));
     }
 
-    @Test
-    void testGetStringWithWildcards_nullInput() {
-        String result = StringUtils.getStringWithWildcards(null, 3);
-        assertEquals("%", result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_URL, params = { "save" }, method = RequestMethod.POST)
+    public String savePage16Responses(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        String pageId = "16";
+        CompositeQuestionnaireRequest request = null;
+        CompositeQuestionnaireRequestBuilder bb = CompositeQuestionnaireRequest.builder();
+        
+        bb.add(PageParameter.page(Integer.valueOf(pageId), MutabilityContext.UPDATE));
+       
+          request =  bb.build();
+        CompositeQuestionnairePage compPage = certificationService.getCompositeQuestionnairePage(
+                ccgMemberDetail.getCertificationId(), request);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(compPage)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            compPage = certificationService.postCompositeQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+            
+            if (reviewMode.isInReviewMode()) {
+            	
+            	boolean externalPageComplete = responseEvaluationUtils.firstElementsAnswered("EXT_REV_1_LAST_NM",
+    					certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "17"));
+            	boolean internalPageComplete = responseEvaluationUtils.firstElementsAnswered("INT_REV_1_LAST_NM",
+    					certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "18"));
+            	
+            	// If External Review selected. If that page is incomplete, disable return to review.
+            	// or if the opposite is true we also need to disable so that the page can be cleared by the 'next' controller
+    			if ((externalReviewerSelected(compPage) && !externalPageComplete)
+    					|| (!externalReviewerSelected(compPage) && externalPageComplete)) {
+    				reviewMode.setDisableReturnToReview(true);
+    				reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, false);
+    			}
+    			
+    			// do the same checks for internal
+    			if ((internalReviewerSelected(compPage) && !internalPageComplete)
+    					|| (!internalReviewerSelected(compPage) && internalPageComplete)) {
+    				reviewMode.setDisableReturnToReview(true);
+    				reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, false);
+    			}
+    		}
+        } else {
+            compPage = evaluator.getInvalidCompositeQuestionnairePage();
+            compPage.logElementsWithError();
+        }
+        addPage16Attrs(model, pageId, compPage);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return COMP_TEMPLATE;
     }
 
-    @Test
-    void testGetStringWithWildcards_customWildcard() {
-        String result = StringUtils.getStringWithWildcards("X", 3, "*");
-        assertEquals("*X*", result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_URL, params = { "back" }, method = RequestMethod.POST)
+    public String page16toCCGMembersList() {
+
+        if(AuthenticatedUserRoleUtils.isSelectedUserCCGLead()) {
+            return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);           
+        }
+        return ccu.redirectTo(CertificationController.SECURE_QI_CERT_CERT_INSTRUCTION_PAGE);
     }
 
-    @Test
-    void testParseStringWithParams() {
-        String result = StringUtils.parseStringWithParams("Hello {0}, you have {1} new messages", "Alice", 5);
-        assertEquals("Hello Alice, you have 5 new messages", result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_URL, params = { "return" }, method = RequestMethod.POST)
+    public String page16ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = "16";
+        CompositeQuestionnaireRequest request = null;
+        CompositeQuestionnaireRequestBuilder bb = CompositeQuestionnaireRequest.builder();
+        
+        bb.add(PageParameter.page(Integer.valueOf(pageId), MutabilityContext.UPDATE));
+       
+          request =  bb.build();
+        CompositeQuestionnairePage compPage = certificationService.getCompositeQuestionnairePage(
+                ccgMemberDetail.getCertificationId(), request);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(compPage)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postCompositeQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            compPage = evaluator.getInvalidCompositeQuestionnairePage();
+            compPage.logElementsWithError();
+            addPage16Attrs(model, pageId, compPage);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return COMP_TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
     }
 
-    @Test
-    void testConcatenateWithNulls_twoStrings() {
-        String result = StringUtils.concatenateWithNulls("-", "A", null);
-        assertEquals("A", result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_URL, params = { "next" }, method = RequestMethod.POST)
+    public String page16toPage17(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        String pageId = "16";
+        CompositeQuestionnaireRequest request = null;
+        CompositeQuestionnaireRequestBuilder bb = CompositeQuestionnaireRequest.builder();
+        
+        bb.add(PageParameter.page(Integer.valueOf(pageId), MutabilityContext.UPDATE));
+       
+          request =  bb.build();
+        CompositeQuestionnairePage compPage = certificationService.getCompositeQuestionnairePage(
+                ccgMemberDetail.getCertificationId(), request);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(compPage)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        boolean externalReviewerSelected = false;
+        boolean internalReviewerSelected = false;
+        if (evaluator.isValid()) {
+            compPage = certificationService.postCompositeQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+            externalReviewerSelected = externalReviewerSelected(compPage);
+            internalReviewerSelected = internalReviewerSelected(compPage);
+        } else {
+            compPage = evaluator.getInvalidCompositeQuestionnairePage();
+            compPage.logElementsWithError();
+            addPage16Attrs(model, pageId, compPage);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return COMP_TEMPLATE;
+        }
+        if (externalReviewerSelected) {
+        	if(reviewMode.isInReviewMode()){
+        		// Check if page 17 has response (just checked 1 required field), 
+            	// if no response hide Return to Review button
+            	// if both are selected lets also check page 18
+            	if(!responseEvaluationUtils.firstElementsAnswered("EXT_REV_1_LAST_NM",
+    							certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "17"))){
+            		reviewMode.setDisableReturnToReview(true);
+            		reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, false);
+            	} else if(internalReviewerSelected && !responseEvaluationUtils.firstElementsAnswered("INT_REV_1_LAST_NM",
+    					certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "18"))){
+            		reviewMode.setDisableReturnToReview(true);
+            		reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, false);
+            	}  
+        	}
+        	
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL);
+        } else if (internalReviewerSelected) {
+        	// Check if page 18 has response (just checked 1 required field), 
+        	// if no response hide Return to Review button
+            if (reviewMode.isInReviewMode() && !responseEvaluationUtils.firstElementsAnswered("INT_REV_1_LAST_NM",
+					certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "18"))){
+            	reviewMode.setDisableReturnToReview(true);
+            	reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, false);
+            }
+            
+        	//clear responses before skip page 17
+            certificationService.deleteCertifcationPageResponses(ccgMemberDetail.getCertificationId(), 17);
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL);
+        } else {
+        	if(reviewMode.isInReviewMode()){
+        		// external/internal section complete
+            	reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, true);
+            	if(ccu.hasAllPartsComplete(reviewMode.getPartCompletion())){
+            		reviewMode.setDisableReturnToReview(false);
+            	}
+        	}
+        	
+        	//clear responses before skip page 17, 18
+            certificationService.deleteCertifcationPageResponses(ccgMemberDetail.getCertificationId(), 17, 18);
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+        }
+        
+    }
+    
+    /**
+     * @param compPage
+     * @return
+     */
+    private boolean externalReviewerSelected(ExternalElementsProvider compPage) {
+        return responseEvaluationUtils.radioButtonSelectionMatches("EXT_RVWR_PRDC_RVW", compPage, "YES");
+    }
+    
+    /**
+     * @param compPage
+     * @return
+     */
+    private boolean internalReviewerSelected(ExternalElementsProvider compPage) {
+        return responseEvaluationUtils.radioButtonSelectionMatches("INTR_RVWR_PRDC_RVW", compPage, "YES");
+    }
+    
+    /**
+     * reviewPage16
+     */
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage16(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+        @RequestParam MultiValueMap<String, String> responses) {
+    
+        String pageId = "16";
+        CompositeQuestionnaireRequest request = null;
+        CompositeQuestionnaireRequestBuilder bb = CompositeQuestionnaireRequest.builder();
+        
+        bb.add(PageParameter.page(Integer.valueOf(pageId), MutabilityContext.UPDATE));
+       
+          request =  bb.build();
+        CompositeQuestionnairePage compPage = certificationService.getCompositeQuestionnairePage(
+                ccgMemberDetail.getCertificationId(), request);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(compPage)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postCompositeQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            compPage = evaluator.getInvalidCompositeQuestionnairePage();
+            compPage.logElementsWithError();
+            List<Element> elements = compPage.getPage(Integer.valueOf(pageId))
+                                             .getElements();
+            elements.addAll(compPage.getElements());
+            addPage16Attrs(model, pageId, compPage);
+            model.addAttribute("container", compPage);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return COMP_TEMPLATE;
+        }
+        
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
     }
 
-    @Test
-    void testConcatenateWithNulls_threeStrings() {
-        String result = StringUtils.concatenateWithNulls(" ", "A", null, "B");
-        assertEquals("A B", result);
+    // CCG Member Part 4 Step 1b
+    public static final String QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL = "/secure/cert/ccg-member/qi/part4/external-review/";
+    public static final String QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_STEP = "1b";
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL, method = RequestMethod.GET)
+    public String getPage17(Model model,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+        
+        String pageId = "17";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_STEP,
+                QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        logger.info("reviewMode: " + ESAPI.encoder().decodeForHTML(""+reviewMode.isInReviewMode()));
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
     }
 
-    @Test
-    void testConcatenateWithNulls_fiveStrings() {
-        String result = StringUtils.concatenateWithNulls("_", "A", null, "B", "C", null);
-        assertEquals("A_B_C", result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL, params = { "save" }, method = RequestMethod.POST)
+    public String savePage17Responses(Model model,
+            @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+
+        String pageId = "17";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            page = certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+            QuestionnairePage page16 = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "16");
+            
+            if (internalReviewerSelected(page16) && reviewMode.isInReviewMode() && !responseEvaluationUtils.firstElementsAnswered("INT_REV_1_LAST_NM",
+    				certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "18"))){
+        	 reviewMode.setDisableReturnToReview(true);
+        	 reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, false);
+            }
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+        }
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_STEP,
+                QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
     }
 
-    @Test
-    void testInsertAtIndexWithNulls_valid() {
-        String result = StringUtils.insertAtIndexWithNulls("-", "12345", 2);
-        assertEquals("12-345", result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL, params = { "back" }, method = RequestMethod.POST)
+    public String page17toPage16() {
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_GEN_INFO_URL);
     }
 
-    @Test
-    void testInsertAtIndexWithNulls_nullInput() {
-        String result = StringUtils.insertAtIndexWithNulls("-", null, 2);
-        assertEquals("", result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL, params = { "return" }, method = RequestMethod.POST)
+    public String page17ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = "17";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_STEP,
+                    QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
     }
 
-    @Test
-    void testRemoveNulls_variations() {
-        String input = "null, Apple, null, Banana, null";
-        String result = StringUtils.removeNulls(input);
-        assertEquals(" Apple,  Banana, ", result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL, params = { "next" }, method = RequestMethod.POST)
+    public String page17toPage18(Model model,
+            @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+
+        String pageId = "17";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        boolean internalReviewerSelected = false;
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+            QuestionnairePage page16 = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                    "16");
+            internalReviewerSelected = internalReviewerSelected(page16);
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_STEP,
+                    QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        
+        if (internalReviewerSelected) {
+        	if (reviewMode.isInReviewMode() && !responseEvaluationUtils.firstElementsAnswered("INT_REV_1_LAST_NM",
+    				certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "18"))){
+            	 reviewMode.setDisableReturnToReview(true);
+            	 reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, false);
+            } 
+        	if (reviewMode.isInReviewMode() && responseEvaluationUtils.firstElementsAnswered("INT_REV_1_LAST_NM",
+    				certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "18"))){
+        		//if 18 is already complete then so will 19 and we can set the section to complete
+        		reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, true);
+            	if(ccu.hasAllPartsComplete(reviewMode.getPartCompletion())){
+            		reviewMode.setDisableReturnToReview(false);
+            	}
+            } 
+        	
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL);
+        } else{
+        	//clear responses before skip page 18
+            certificationService.deleteCertifcationPageResponses(ccgMemberDetail.getCertificationId(), 18);
+
+            reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, true);
+            if (reviewMode.isInReviewMode() && responseEvaluationUtils.firstElementsAnswered("CHPT_3_4_WH_RESP_CAL_YR_RVWD",
+    				certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "19"))){
+            	if(ccu.hasAllPartsComplete(reviewMode.getPartCompletion())){
+            		reviewMode.setDisableReturnToReview(false);
+            	}
+            }
+                
+            
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+        }
+        
+    }
+    
+    @RequestMapping(value =  QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage17(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("questionnairePage") QuestionnairePage questionnairePage,
+            @RequestParam MultiValueMap<String, String> responses) {
+    
+        String pageId = "17";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_STEP, QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
     }
 
-    @Test
-    void testSplitStringOnDelimiter() {
-        List<String> result = StringUtils.splitStringOnDelimiter(",", "A,B,C");
-        assertEquals(List.of("A", "B", "C"), result);
+    // CCG Member Part 4 Step 1c
+    public static final String QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL = "/secure/cert/ccg-member/qi/part4/internal-review/";
+    public static final String QI_CCG_MEMBER_P4_INTERNAL_REVIEW_STEP = "1c";
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL, method = RequestMethod.GET)
+    public String getPage18(Model model,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+        
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+
+        String pageId = "18";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_INTERNAL_REVIEW_STEP,
+                QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
     }
 
-    @Test
-    void testSplitStringOnDot() {
-        List<String> result = StringUtils.splitStringOnDot("gov.irs.fatca");
-        assertEquals(List.of("gov", "irs", "fatca"), result);
+    @RequestMapping(value = QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL, params = { "save" }, method = RequestMethod.POST)
+    public String savePage18Responses(Model model,
+            @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+
+        String pageId = "18";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+
+        if (evaluator.isValid()) {
+            page = certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+        }
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_INTERNAL_REVIEW_STEP,
+                QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
     }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL, params = { "back" }, method = RequestMethod.POST)
+    public String page18toPage17(@ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+        QuestionnairePage page16 = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                "16");
+        boolean externalReviewerSelected = externalReviewerSelected(page16);
+        if (externalReviewerSelected) {
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL);
+        }
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_GEN_INFO_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL, params = { "return" }, method = RequestMethod.POST)
+    public String page18ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = "18";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_INTERNAL_REVIEW_STEP,
+                    QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL, params = { "next" }, method = RequestMethod.POST)
+    public String page18toPage19(Model model,
+            @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+
+        String pageId = "18";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_INTERNAL_REVIEW_STEP,
+                    QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        if (reviewMode.isInReviewMode() && responseEvaluationUtils.firstElementsAnswered("CHPT_3_4_WH_RESP_CAL_YR_RVWD",
+				certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "19"))){
+        	 reviewMode.setDisableReturnToReview(false);
+        }
+        
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+    }
+    
+    @RequestMapping(value = QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage18(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "18";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_INTERNAL_REVIEW_STEP, QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
+    }
+
+    // CCG Member Part 4 Step 2
+    public static final String QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL = "/secure/cert/ccg-member/qi/part4/general-information-acc/";
+    public static final String QI_CCG_MEMBER_P4_GEN_INFO_ACC_STEP = "2";
+    public static final List<String> part4List = Arrays.asList("QI_USED_SAFE_HBR_MTHD_A", "QI_USED_SAFE_HBR_MTHD_B",
+            "QI_USED_SAFE_HBR_MTHD_C", "QI_USED_SAFE_HBR_MTHD_D", "QI_NUM_ACCNTS_SMPL_A",
+            "QI_NUM_ACCNTS_SMPL_B", "QI_NUM_ACCNTS_SMPL_C", "QI_NUM_ACCNTS_SMPL_D",
+            "TOT_UNDRWTHLDNG_SMPL_A", "TOT_UNDRWTHLDNG_SMPL_B",
+            "TOT_UNDRWTHLDNG_SMPL_C", "TOT_UNDRWTHLDNG_SMPL_D");
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL, method = RequestMethod.GET)
+    public String getPage19(Model model,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+    	
+    	reviewMode.getPartCompletion().put(PART_FOUR_COMPLETE, true);
+    	if(ccu.hasAllPartsComplete(reviewMode.getPartCompletion())){
+    		reviewMode.setDisableReturnToReview(false);
+    	}
+        
+
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+        
+        String pageId = "19";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_GEN_INFO_ACC_STEP,
+                QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+        ccu.rowArrangeElemets(model,page);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL, params = { "save" }, method = RequestMethod.POST)
+    public String savePage19Responses(Model model,
+            @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+
+        String pageId = "19";
+
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        if(page.getElement("NUM_ACC_RVWD_RCV_WH_PYMT")!=null)
+            page.removeElementByElementId(page.getElement("NUM_ACC_RVWD_RCV_WH_PYMT").getId());
+        ccu.validateResponse(responses,part4List);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            page = certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+        }
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_GEN_INFO_ACC_STEP,
+                QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+        ccu.rowArrangeElemets(model,page);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL, params = { "back" }, method = RequestMethod.POST)
+    public String page19toPage18(@ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+        QuestionnairePage page16 = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), "16");
+        boolean externalReviewerSelected = externalReviewerSelected(page16);
+        boolean internalReviewerSelected = internalReviewerSelected(page16);
+        if (internalReviewerSelected) {
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_INTERNAL_REVIEW_URL);
+        }
+        if (externalReviewerSelected) {
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_EXTERNAL_REVIEW_URL);
+        }
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_GEN_INFO_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL, params = { "return" }, method = RequestMethod.POST)
+    public String page19ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = "19";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        if(page.getElement("NUM_ACC_RVWD_RCV_WH_PYMT")!=null)
+            page.removeElementByElementId(page.getElement("NUM_ACC_RVWD_RCV_WH_PYMT").getId());
+        ccu.validateResponse(responses,part4List);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_GEN_INFO_ACC_STEP,
+                    QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+            ccu.rowArrangeElemets(model,page);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL, params = { "next" }, method = RequestMethod.POST)
+    public String page19toPage20(Model model,
+            @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode) {
+
+        String pageId = "19";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        if(page.getElement("NUM_ACC_RVWD_RCV_WH_PYMT")!=null)
+            page.removeElementByElementId(page.getElement("NUM_ACC_RVWD_RCV_WH_PYMT").getId());
+        ccu.validateResponse(responses,part4List);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_GEN_INFO_ACC_STEP,
+                    QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+            ccu.rowArrangeElemets(model,page);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_DOCUMENTATION_URL);
+    }
+    
+    @RequestMapping(value = QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage19(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "19";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+        if(page.getElement("NUM_ACC_RVWD_RCV_WH_PYMT")!=null)
+            page.removeElementByElementId(page.getElement("NUM_ACC_RVWD_RCV_WH_PYMT").getId());
+        ccu.validateResponse(responses,part4List);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_GEN_INFO_ACC_STEP,
+                    QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+            ccu.rowArrangeElemets(model,page);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
+    }
+
+    // CCG Member Part 4 Step 3
+    public static final String QI_CCG_MEMBER_P4_DOCUMENTATION_URL = "/secure/cert/ccg-member/qi/part4/documentation/";
+    public static final String QI_CCG_MEMBER_P4_DOCUMENTATION_STEP = "3";
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_DOCUMENTATION_URL, method = RequestMethod.GET)
+    public String getPage20(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+        
+        String pageId = "20";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_DOCUMENTATION_STEP,
+                QI_CCG_MEMBER_P4_DOCUMENTATION_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_DOCUMENTATION_URL, params = { "save" }, method = RequestMethod.POST)
+    public String savePage20Responses(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        String pageId = "20";
+
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            page = certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+        }
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_DOCUMENTATION_STEP,
+                QI_CCG_MEMBER_P4_DOCUMENTATION_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_DOCUMENTATION_URL, params = { "back" }, method = RequestMethod.POST)
+    public String page20toPage19() {
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_GEN_INFO_ACC_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_DOCUMENTATION_URL, params = { "return" }, method = RequestMethod.POST)
+    public String page20ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = "20";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_DOCUMENTATION_STEP,
+                    QI_CCG_MEMBER_P4_DOCUMENTATION_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_DOCUMENTATION_URL, params = { "next" }, method = RequestMethod.POST)
+    public String page20toPage21(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        String pageId = "20";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_DOCUMENTATION_STEP,
+                    QI_CCG_MEMBER_P4_DOCUMENTATION_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_WITHHOLDING_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_DOCUMENTATION_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage20(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "20";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_DOCUMENTATION_STEP,
+                    QI_CCG_MEMBER_P4_DOCUMENTATION_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
+    }
+    
+    // CCG Member Part 4 Step 4
+    public static final String QI_CCG_MEMBER_P4_WITHHOLDING_URL = "/secure/cert/ccg-member/qi/part4/withholding/";
+    public static final String QI_CCG_MEMBER_P4_WITHHOLDING_STEP = "4";
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_WITHHOLDING_URL, method = RequestMethod.GET)
+    public String getPage21(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+        
+        String pageId = "21";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_WITHHOLDING_STEP,
+                QI_CCG_MEMBER_P4_WITHHOLDING_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_WITHHOLDING_URL, params = { "save" }, method = RequestMethod.POST)
+    public String savePage21Responses(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        String pageId = "21";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            page = certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+        }
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_WITHHOLDING_STEP,
+                QI_CCG_MEMBER_P4_WITHHOLDING_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_WITHHOLDING_URL, params = { "back" }, method = RequestMethod.POST)
+    public String page21toPage20() {
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_DOCUMENTATION_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_WITHHOLDING_URL, params = { "return" }, method = RequestMethod.POST)
+    public String page21ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = "21";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_WITHHOLDING_STEP,
+                    QI_CCG_MEMBER_P4_WITHHOLDING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_WITHHOLDING_URL, params = { "next" }, method = RequestMethod.POST)
+    public String page21to22(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode, @RequestParam MultiValueMap<String, String> responses,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        String pageId = "21";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_WITHHOLDING_STEP,
+                    QI_CCG_MEMBER_P4_WITHHOLDING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_WITHHOLDING_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage21(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "21";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_WITHHOLDING_STEP,
+                    QI_CCG_MEMBER_P4_WITHHOLDING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
+    }
+    
+    // CCG Member Part 4 Step 5
+    public static final String QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL = "/secure/cert/ccg-member/qi/part4/reconciliation-of-reporting/";
+    public static final String QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_STEP = "5";
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL, method = RequestMethod.GET)
+    public String getPage22(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+        
+        String pageId = "22";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_STEP,
+                QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL, params = {
+            "save" }, method = RequestMethod.POST)
+    public String savePage22Responses(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "22";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            page = certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+        }
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_STEP,
+                QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL, params = {
+            "back" }, method = RequestMethod.POST)
+    public String page22to21() {
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_WITHHOLDING_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL, params = {
+            "return" }, method = RequestMethod.POST)
+    public String page22ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = "22";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_STEP,
+                    QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL, params = {
+            "next" }, method = RequestMethod.POST)
+    public String page22toPage23(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "22";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_STEP,
+                    QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage22(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "22";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_STEP,
+                    QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
+    }
+        
+    // CCG Member Part 4 Step 6
+    public static final String QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL = "/secure/cert/ccg-member/qi/part4/reconciliation-of-withholding/";
+    public static final String QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_STEP = "6";
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL, method = RequestMethod.GET)
+    public String getPage23(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+        
+        String pageId = "23";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_STEP,
+                QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL, params = {
+            "save" }, method = RequestMethod.POST)
+    public String savePage23Responses(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "23";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            page = certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+        }
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_STEP,
+                QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL, params = {
+            "back" }, method = RequestMethod.POST)
+    public String page23toPage22() {
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_RECONCILIATION_OF_RPTING_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL, params = {
+            "return" }, method = RequestMethod.POST)
+    public String page23ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = "23";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_STEP,
+                    QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL, params = {
+            "next" }, method = RequestMethod.POST)
+    public String page23toPart5(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses, RedirectAttributes redirectAttributes) {
+
+        String pageId = "23";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_STEP,
+                    QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        redirectAttributes.addFlashAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        if (isEntityQddAndYearGreaterThanOrEqualTo2021(ccgMemberDetail.getEntityId(), ccgMemberDetail.getCertificationDueDt()
+                                                                                         .getYear())) {
+            return ccu.redirectTo(QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL);
+        }
+        
+        //clear responses before skip part 5 (page 24 - 30)
+        certificationService.deleteCertifcationPageResponses(ccgMemberDetail.getCertificationId(), 
+        													 24, 25, 26, 27, 28, 29, 30);
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL);
+        
+    }
+    
+    @RequestMapping(value = QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage23(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = "23";
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_STEP,
+                    QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
+    }
+    
+    /**
+     * qdd entities cannot access part 5 (or the cert) until 2021
+     * @return
+     */
+    private boolean isEntityQddAndYearGreaterThanOrEqualTo2021(String entityId, int certDueDtYear) {
+        return AuthenticatedUserRoleUtils.isQddEntity(entityId) && certDueDtYear >= yearForPartFive;
+    }
+    
+    
+    
+    
+    
+    
+    //new part 7
+    
+    // CCG Member Part 4 Step 6
+    public static final String QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL = "/secure/cert/ccg-member/qi/part4/other-information/";
+    public static final String QI_CCG_MEMBER_P4_OTHER_INFORMATION_STEP = "7";
+    public static final String QI_CCG_MEMBER_P4_OTHER_INFORMATION_PAGE = "101";
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL, method = RequestMethod.GET)
+    public String getPage101(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail) {
+
+        if (AuthenticatedUserRoleUtils.isSelectedUserLockedOutOfCertQuestionaire())
+            return LANDING_PAGE;
+        
+        String pageId = QI_CCG_MEMBER_P4_OTHER_INFORMATION_PAGE;
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_OTHER_INFORMATION_STEP,
+        		QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL, params = {
+            "save" }, method = RequestMethod.POST)
+    public String savePage101Responses(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = QI_CCG_MEMBER_P4_OTHER_INFORMATION_PAGE;
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            page = certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+        }
+        ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_OTHER_INFORMATION_STEP,
+        		QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL);
+        model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        model.addAttribute(REVIEW_MODE, reviewMode);
+        model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+        return TEMPLATE;
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL, params = {
+            "back" }, method = RequestMethod.POST)
+    public String page101toPage23() {
+        return ccu.redirectTo(QI_CCG_MEMBER_P4_RECONCILIATION_OF_WITHHOLDING_URL);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL, params = {
+            "return" }, method = RequestMethod.POST)
+    public String page101ReturnToMembersList(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+        String pageId = QI_CCG_MEMBER_P4_OTHER_INFORMATION_PAGE;
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_OTHER_INFORMATION_STEP,
+            		QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        return ccu.redirectTo(CERT_QI_PART7_COMPLIANCE_GROUP_MEMBER_LIST);
+    }
+
+    @RequestMapping(value = QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL, params = {
+            "next" }, method = RequestMethod.POST)
+    public String page101toPart5(Model model,
+            @ModelAttribute("reviewMode") ReviewMode reviewMode,
+            @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses, RedirectAttributes redirectAttributes) {
+
+        String pageId = QI_CCG_MEMBER_P4_OTHER_INFORMATION_PAGE;
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(),
+                pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_OTHER_INFORMATION_STEP,
+            		QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(REVIEW_MODE, reviewMode);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        redirectAttributes.addFlashAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+        if (isEntityQddAndYearGreaterThanOrEqualTo2021(ccgMemberDetail.getEntityId(), ccgMemberDetail.getCertificationDueDt()
+                                                                                         .getYear())) {
+            return ccu.redirectTo(CCGMemberQiCertificationPartFiveController.QI_CCG_MEMBER_P5_GENERAL_INFORMATION_URL);
+        }
+        
+        return ccu.redirectTo(CCGMemberQiCertificationPartSixController.QI_CCG_MEMBER_P6_GEN_INFO_DOC_URL);
+        
+    }
+    
+    @RequestMapping(value = QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL, params = { "review" }, method = RequestMethod.POST)
+    public String reviewPage101(Model model, @ModelAttribute("ccgMemberDetail") CcgMemberDetail ccgMemberDetail,
+            @RequestParam MultiValueMap<String, String> responses) {
+
+        String pageId = QI_CCG_MEMBER_P4_OTHER_INFORMATION_PAGE;
+        QuestionnairePage page = certificationService.getQuestionnairePage(ccgMemberDetail.getCertificationId(), pageId);
+        ResponseEvaluator evaluator = ResponseEvaluator.build(page)
+                                                       .addMultiUserResponses(responses)
+                                                       .build();
+        if (evaluator.isValid()) {
+            certificationService.postQuestionnairePageResponse(ccgMemberDetail.getCertificationId(),
+                    evaluator.buildResponse());
+        } else {
+            page = evaluator.getInvalidQuestionnairePage();
+            page.logElementsWithError();
+            ccu.addRequiredAttributes(model, page, QI_CCG_MEMBER_P4_OTHER_INFORMATION_STEP,
+            		QI_CCG_MEMBER_P4_OTHER_INFORMATIONG_URL);
+            model.addAttribute(CCG_MEMBER_DETAIL, ccgMemberDetail);
+            model.addAttribute(IS_LEAD, AuthenticatedUserRoleUtils.isSelectedUserCCGLead());
+            return TEMPLATE;
+        }
+        
+        return ccu.redirectTo(CcgMemberQiReviewController.SECURE_CCG_CCG_MEMBER_CERT_QI_REVIEW_PART4);
+    }
+    
+    
 }
