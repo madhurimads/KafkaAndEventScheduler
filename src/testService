@@ -1,90 +1,488 @@
-import gov.irs.fatca.qi.core.util.DropdownGeneratorUtils;
-import gov.irs.fatca.qi.domain.admin.EntitySubmissionInfo;
-import gov.irs.fatca.qi.domain.enums.AdminStatusEnum;
-import gov.irs.fatca.qi.domain.enums.ApplicationCannedMessageEnum;
-import gov.irs.fatca.qi.domain.enums.RenewalCannedMessageEnum;
-import gov.irs.fatca.qi.domain.entity.ProfileInfo;
-import org.junit.jupiter.api.Test;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import static gov.irs.fatca.qi.validation.VerificationPatterns.*;
+import org.springframework.stereotype.Component;
 
-import java.util.Map;
+/**
+ * @author oswaldin.azor
+ * 
+ *         Moved constants to the domain module. Glenn
+ *
+ */
+@Component
+public class FieldsValidator {
 
-import static org.junit.jupiter.api.Assertions.*;
+    private Pattern standardInputBoxPattern;
 
-class DropdownGeneratorUtilsTest {
+    private Pattern sqlInjectionPattern;
 
-    @Test
-    void statusDropdown_removesOverdueIfNotRN_andMissingFieldsRemovesSubmitted() {
-        EntitySubmissionInfo info = new EntitySubmissionInfo();
-        info.setSubmissionTypeCode("AP"); // not RN
-        info.setCountryOfOrg("");
-        info.setEntityType("");
-        info.setEntityLegalName("");
-        // KYC irrelevant unless entityType QI
+    private Pattern numberOnlyInputPattern;
 
-        Map<String, String> dropdown = DropdownGeneratorUtils.statusDropdown(info);
+    private Pattern textBoxInputPattern;
 
-        assertFalse(dropdown.containsKey(AdminStatusEnum.OVERDUE_STATUS.getCode()));
-        assertFalse(dropdown.containsKey(AdminStatusEnum.SUBMITTED_STATUS.getCode()));
-        // Some other status should remain
-        assertTrue(dropdown.containsKey(AdminStatusEnum.DRAFT_STATUS.getCode()));
+    private Pattern nameInputPattern;
+
+    private Pattern telephoneInputPattern;
+
+    private Pattern foreignPostalInputPattern;
+
+    private Pattern charactersOnlyInputPattern;
+
+    private Pattern moneyInputPattern;
+
+    private Pattern descrInputPattern;
+
+    private Pattern individualNameForeignPostalInputPattern;
+
+    private Pattern fatcaIDputPattern;
+
+    private Pattern fiRegfatcaIDputPattern;
+
+    private Pattern emailCharInputPattern;
+
+    private Pattern emailFormatInputPattern;
+
+    private Pattern giinPart1InputPattern;
+
+    private Pattern einInputPattern;
+
+    private Pattern fileNameInputPattern;
+
+    private Pattern fileNameOutputPattern;
+
+    private Pattern datePattern;
+
+    private Pattern confirmationIdInputPattern;
+
+    private Pattern sadiIdPattern;
+
+    private Pattern uuidPattern;
+
+    private Pattern qiEntityIdPattern;
+
+    private Pattern qiEntityStatusPattern;
+
+    private Pattern formPartPattern;
+
+    private Pattern updateTypePattern;
+
+    private Pattern submissionStatusPattern;
+    
+    private Pattern giinPartTwoParamPattern;
+
+    private Pattern giinPartThreeParamPattern;
+    
+    private Pattern giinPartFourParamPattern;
+
+    private Pattern emailParamPattern;
+
+    private Pattern nameParamPattern;
+
+    private Pattern fatcaIDParamPattern;
+
+    private Pattern usZipCode;
+
+    private Pattern certFirstCharPattern;
+
+    private Matcher matcher;
+
+    /**
+     * 
+     */
+    public FieldsValidator() {
+
+        emailParamPattern = Pattern.compile(EMAIL_PARAM_PATTERN);
+
+        nameParamPattern = Pattern.compile(NAME_PARAM_INPUT_PATTERN);
+
+        fatcaIDParamPattern = Pattern.compile(FATCA_ID_PARAM_PATTERN);
+
+        telephoneInputPattern = Pattern.compile(TELEPHONE_NUMBER_PATTERN);
+
+        foreignPostalInputPattern = Pattern.compile(FOREIGN_POSTAL_INPUT_PATTERN);
+
+        nameInputPattern = Pattern.compile(NAME_INPUT_PATTERN);
+
+        textBoxInputPattern = Pattern.compile(TEXT_BOX_INPUT_PATTERN);
+
+        standardInputBoxPattern = Pattern.compile(STANDARD_INPUT_BOX_PATTERN);
+
+        sqlInjectionPattern = Pattern.compile(SQL_INJECTION_PATTERN);
+
+        numberOnlyInputPattern = Pattern.compile(NUMERICAL_INPUT_PATTERN);
+
+        charactersOnlyInputPattern = Pattern.compile(ALPHA_INPUT_PATTERN);
+
+        moneyInputPattern = Pattern.compile(MONEY_INPUT_PATTERN);
+
+        descrInputPattern = Pattern.compile(DSCR_INPUT_PATTERN);
+
+        fatcaIDputPattern = Pattern.compile(FATCAID_INPUT_PATTERN);
+
+        fiRegfatcaIDputPattern = Pattern.compile(FATCAID_INPUT_FI_REG_PATTERN);
+
+        emailCharInputPattern = Pattern.compile(EMAIL_CHAR_INPUT_PATTERN);
+
+        emailFormatInputPattern = Pattern.compile(EMAIL_FORMAT_INPUT_PATTERN);
+
+        giinPart1InputPattern = Pattern.compile(GIIN_PARTONE_INPUT_PATTERN);
+        
+        giinPartTwoParamPattern = Pattern.compile(GIIN_PARTTWO_PARAM_PATTERN);
+        
+        giinPartThreeParamPattern = Pattern.compile(GIIN_PARTTHREE_PARAM_PATTERN);
+        
+        giinPartFourParamPattern = Pattern.compile(GIIN_PARTFOUR_PARAM_PATTERN);
+
+        individualNameForeignPostalInputPattern = Pattern.compile(INDIVIDUAL_NAME_AND_FOREIGN_POSTAL_INPUT_PATTERN);
+
+        einInputPattern = Pattern.compile(EIN_INPUT_PATTERN);
+
+        fileNameInputPattern = Pattern.compile(FILE_NAME_INPUT_PATTERN);
+
+        fileNameOutputPattern = Pattern.compile(FILE_NAME_OUTPUT_PATTERN);
+
+        datePattern = Pattern.compile(DATE_PATTERN);
+
+        confirmationIdInputPattern = Pattern.compile(CONFIRMATION_ID_PATTERN);
+
+        sadiIdPattern = Pattern.compile(SADI_ID_PATTERN);
+
+        uuidPattern = Pattern.compile(UUID_PATTERN);
+
+        qiEntityIdPattern = Pattern.compile(QI_ENTITY_ID_PATTERN);
+
+        formPartPattern = Pattern.compile(FORM_PART_PATTERN);
+
+        updateTypePattern = Pattern.compile(UPDATE_TYPE_PATTERN);
+
+        submissionStatusPattern = Pattern.compile(SUBMISSION_STATUS_PATTERN);
+
+        qiEntityStatusPattern = Pattern.compile(QI_ENTITY_STATUS_PATTERN);
+
+        usZipCode = Pattern.compile(US_ZIP_CODE_PATTERN);
+
+        certFirstCharPattern = Pattern.compile(FIRST_CHAR_INPUT_PATTERN);
+    }
+    
+    public boolean validateGiinPart1(String input) {
+
+        matcher = giinPart1InputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+    
+    public boolean validateGiinPart2(String input) {
+    	matcher = giinPartTwoParamPattern.matcher(input);
+    	
+    	return matcher.matches();
+    	
+    }
+    
+    public boolean validateGiinPart3(String input) {
+        matcher = giinPartThreeParamPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+    
+    public boolean validateGiinPart4(String input) {
+    	matcher = giinPartFourParamPattern.matcher(input);
+    	
+    	return matcher.matches();
     }
 
-    @Test
-    void statusDropdown_keepsOverdueForRN_andHasAllFields() {
-        EntitySubmissionInfo info = new EntitySubmissionInfo();
-        info.setSubmissionTypeCode("RN");
-        info.setCountryOfOrg("US");
-        info.setEntityType("ABC");
-        info.setEntityLegalName("Name");
-        info.setKycJurisdiction("Jurisdiction"); // only needed if type is QI
+    public boolean validateEmailParam(String input) {
+        matcher = emailParamPattern.matcher(input);
 
-        Map<String, String> dropdown = DropdownGeneratorUtils.statusDropdown(info);
+        return matcher.matches();
 
-        assertTrue(dropdown.containsKey(AdminStatusEnum.OVERDUE_STATUS.getCode()));
-        assertTrue(dropdown.containsKey(AdminStatusEnum.SUBMITTED_STATUS.getCode()));
     }
 
-    @Test
-    void applicationCannedMessageDropdown_excludesC051() {
-        Map<String, String> map = DropdownGeneratorUtils.applicationCannedMessageDropdown();
-        assertFalse(map.containsKey(ApplicationCannedMessageEnum.C_051.getCode()));
-        // Other enums should exist
-        assertTrue(map.size() > 0);
+    public boolean validateFatcaIdParams(String input) {
+        matcher = fatcaIDParamPattern.matcher(input);
+
+        return matcher.matches();
+
     }
 
-    @Test
-    void renewalCannedMessageDropdown_excludesC052() {
-        Map<String, String> map = DropdownGeneratorUtils.renewalCannedMessageDropdown();
-        assertFalse(map.containsKey(RenewalCannedMessageEnum.C_052.getCode()));
-        assertTrue(map.size() > 0);
+    public boolean validateNameParams(String input) {
+        matcher = nameParamPattern.matcher(input);
+
+        return matcher.matches();
+
     }
 
-    @Test
-    void contentTypeDropdown_profileInfoConditionsApplied() {
-        ProfileInfo prof = new ProfileInfo();
-        prof.setQdd(false);
-        prof.setEntityStatus("AP"); // triggers removal of FORM_SS_4
-        var map = DropdownGeneratorUtils.contentTypeDropdown(prof);
+    public boolean validateTelephoneNumber(String input) {
+        matcher = telephoneInputPattern.matcher(input);
 
-        // PAPER_ADDITIONAL_BRANCH_INFORMATION and PAPER_FORM14345 always removed
-        assertFalse(map.containsKey("PAPER_ADDITIONAL_BRANCH_INFORMATION"));
-        assertFalse(map.containsKey("PAPER_FORM14345"));
-        // QDD_TRANSACTIONS removed since not QDD
-        assertFalse(map.containsKey("QDD_TRANSACTIONS"));
+        return matcher.matches();
     }
 
-    @Test
-    void reviewAndDueYearsDropdown_rangeCorrect() {
-        int start = 2020;
-        Map<String, String> review = DropdownGeneratorUtils.ReviewYearsDropdown(start);
-        Map<String, String> due = DropdownGeneratorUtils.dueYearsDropdown(start);
+    public boolean validateName(String input) {
+        matcher = nameInputPattern.matcher(input);
 
-        int current = java.time.Year.now().getValue();
-        assertEquals(current - start, review.size());
-        assertEquals(current - start + 1, due.size());
-        assertTrue(review.containsKey(String.valueOf(current - 1)));
-        assertTrue(due.containsKey(String.valueOf(current)));
+        return matcher.matches();
     }
+
+    public boolean validateForeignPostalCode(String input) {
+        matcher = foreignPostalInputPattern.matcher(input);
+
+        return matcher.matches();
+    }
+
+    public boolean validateTextBox(String input) {
+        matcher = textBoxInputPattern.matcher(input);
+
+        return matcher.matches();
+    }
+
+    public boolean validateStandardInput(String input) {
+
+        matcher = standardInputBoxPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateSqlInjection(String input) {
+
+        boolean isValidString = true;
+
+        input = input.replaceAll("\\s+", "");
+
+        String[] splitInput = splitStringEvery(input, MAX_STRING_SPLIT_LENGTH);
+
+        for (String splitInputItem : splitInput) {
+            Matcher filenameMatcher = sqlInjectionPattern.matcher(splitInputItem);
+            if (filenameMatcher.find())
+                isValidString = false;
+        }
+
+        return isValidString;
+
+    }
+
+    public boolean validateNumber(String input) {
+
+        matcher = numberOnlyInputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateCharacters(String input) {
+
+        matcher = charactersOnlyInputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateMoney(String input) {
+
+        matcher = moneyInputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateDescr(String input) {
+
+        matcher = descrInputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateFatcaIDForFiReg(String input) {
+
+        matcher = fiRegfatcaIDputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateFatcaID(String input) {
+
+        matcher = fatcaIDputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateEmailFormat(String input) {
+        matcher = emailFormatInputPattern.matcher(input);
+
+        return matcher.matches();
+    }
+    
+    public boolean validateNameAndForeignPostal(String input) {
+
+        matcher = individualNameForeignPostalInputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateEmailChar(String input) {
+
+        matcher = emailCharInputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateEIN(String input) {
+
+        matcher = einInputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean valdidateEINRepeatedOrSequenceDigits(String input) {
+        boolean valid = true;
+        if (input.equals("000000000") || input.equals("111111111") || input.equals("222222222")
+                || input.equals("333333333") || input.equals("444444444") || input.equals("555555555")
+                || input.equals("666666666") || input.equals("777777777") || input.equals("888888888")
+                || input.equals("999999999") || input.equals("123456789") || input.equals("012345678"))
+            valid = false;
+
+        return valid;
+    }
+
+    public boolean validateRepeatedDigits(String input) {
+        boolean valid = false;
+        char[] chars = input.toCharArray();
+        for (int i=0; i < chars.length - 1; i++) {
+            if (chars[i] != chars[i+1]) {
+                valid = true;
+                break;
+            }
+        }
+
+        return valid;
+    }
+    
+    public boolean validateSequentialDigits(String input) {
+        boolean valid = false;
+        char[] chars = input.toCharArray();
+        for (int i=0; i < chars.length - 1; i++) {
+            if (!Integer.valueOf(chars[i+1]).equals(Integer.valueOf(chars[i]) + 1)) {
+                valid = true;
+                break;
+            }
+        }
+
+        return valid;
+    }
+    
+    public boolean valdidateEINRepeated(String input) {
+        boolean valid = true;
+        if (input.equals("000000000") || input.equals("111111111") || input.equals("222222222")
+                || input.equals("333333333") || input.equals("444444444") || input.equals("555555555")
+                || input.equals("666666666") || input.equals("777777777") || input.equals("888888888")
+                || input.equals("999999999"))
+            valid = false;
+
+        return valid;
+    }
+
+    public boolean validateFileName(String input) {
+
+        matcher = fileNameInputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateOutputFileName(String input) {
+
+        matcher = fileNameOutputPattern.matcher(input);
+
+        return matcher.matches();
+
+    }
+
+    public boolean validateDate(String date) {
+        matcher = datePattern.matcher(date);
+
+        return matcher.matches();
+    }
+
+    public boolean validateConfirmationId(String confirmationId) {
+        matcher = confirmationIdInputPattern.matcher(confirmationId);
+
+        return matcher.matches();
+    }
+
+    public boolean validateSadiId(String sadiId) {
+        matcher = sadiIdPattern.matcher(sadiId);
+
+        return matcher.matches();
+    }
+
+    public boolean validateUUID(String uuid) {
+        matcher = uuidPattern.matcher(uuid);
+
+        return matcher.matches();
+    }
+
+    public boolean validateQiEntityId(String qiEntityId) {
+        matcher = qiEntityIdPattern.matcher(qiEntityId);
+
+        return matcher.matches();
+    }
+
+    public boolean validateFormPart(String formPart) {
+        matcher = formPartPattern.matcher(formPart);
+
+        return matcher.matches();
+    }
+
+    public boolean validateUpdateType(String updateType) {
+        matcher = updateTypePattern.matcher(updateType);
+
+        return matcher.matches();
+    }
+
+    public boolean validateSubmissionStatus(String submissionStatus) {
+        matcher = submissionStatusPattern.matcher(submissionStatus);
+
+        return matcher.matches();
+    }
+
+    public boolean validateQiEntityStatusPattern(String qiEntityStatus) {
+        matcher = qiEntityStatusPattern.matcher(qiEntityStatus);
+
+        return matcher.matches();
+    }
+
+    public boolean validateUsZipCodePattern(String input) {
+        matcher = usZipCode.matcher(input);
+
+        return matcher.matches();
+    }
+
+    public String[] splitStringEvery(String s, int interval) {
+        int arrayLength = (int) Math.ceil(((s.length() / (double) interval)));
+        String[] result = new String[arrayLength];
+
+        int j = 0;
+        int lastIndex = result.length - 1;
+        for (int i = 0; i < lastIndex; i++) {
+            result[i] = s.substring(j, j + interval);
+            j += interval;
+        } // Add the last bit
+        result[lastIndex] = s.substring(j);
+
+        return result;
+    }
+
+    public boolean validateCertFirstCharInput(String input) {
+        matcher = certFirstCharPattern.matcher(input);
+        return matcher.matches();
+    }
+
 }
