@@ -1,486 +1,186 @@
+package gov.irs.fatca.qi.core.util;
 
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.ui.Model;
-
-import gov.irs.fatca.qi.domain.cert.disp.Element;
-import gov.irs.fatca.qi.domain.cert.disp.ElementTypes;
-import gov.irs.fatca.qi.domain.cert.disp.ExternalElementsProvider;
-import gov.irs.fatca.qi.domain.cert.disp.QuestionnairePage;
-import gov.irs.fatca.qi.domain.cert.disp.TextExpectedResponse;
+import gov.irs.fatca.qi.domain.cert.disp.*;
 import gov.irs.fatca.qi.domain.cert.resp.QuestionResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.ui.ConcurrentModel;
 
-/**
- * util class with methods to help evaluate the state of responses for a given
- * page to direct page flow
- *
- */
-public class ResponseEvaluationUtils {
-    
-    private static final Logger logger = LoggerFactory.getLogger(ResponseEvaluationUtils.class);
+import java.util.List;
 
-    private static final String CBX_NOT_CHECKED = "0";
-    private static final String CBX_CHECKED = "1";
-    private static final String RADIO_BTN_YES = "YES";
-    private static final String RADIO_BTN_NO = "NO";
+import static org.junit.jupiter.api.Assertions.*;
 
-    /**
-     * Checks a list of elements on a given page based on the type of element
-     * checks to see if all elements in the list have a response. if one element
-     * is unanswered on a page, returns false 
-     * TODO add support for other elements types as needed
-     * TODO maybe make this specific to check boxes only as allCbxChecked()?
-     * @param elementNamesList
-     * @param page
-     * @param elementType
-     * @return
-     */
-    public boolean allElementsAnswered(List<String> elementNamesList, QuestionnairePage page, String elementType) {
-        String compareTo = null;
-        switch (elementType) {
-        case ElementTypes.CBX_CODE:
-            compareTo = CBX_NOT_CHECKED;
-            break;
-        default:
-            break;
-        }
-        for (String elementName : elementNamesList) {
-            Element element = page.getElement(elementName);
-            Optional<String> responseValue = Optional.ofNullable(element)
-                                                     .map(Element::getQuestionResponse)
-                                                     .map(QuestionResponse::getResponseValue);
-            if (responseValue.isPresent()) {
-                if (element.getQuestionResponse()
-                           .getResponseValue()
-                           .equalsIgnoreCase(compareTo)) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-        return true;
-    };
+class ResponseEvaluationUtilsTest {
 
-    /**
-     * Checks a list of elements on a given page based on the type of element
-     * checks to see if at lease one element in the list has a response. returns
-     * true on the first find 
-     * TODO maybe make this specific to check boxes only as oneOrMoreCbxChecked()
-     * 
-     * @param elementNamesList
-     * @param page
-     * @param elementType
-     * @return
-     */
-    public boolean oneOrMoreElementsAnswered(List<String> elementNamesList, QuestionnairePage page,
-            String elementType) {
-        String compareTo = null;
-        switch (elementType) {
-        case ElementTypes.CBX_CODE:
-            compareTo = CBX_CHECKED;
-            break;
-        default:
-            break;
-        }
-        if(elementType.equals(ElementTypes.CBX_CODE)) {
-            for (String elementName : elementNamesList) {
-                Element element = page.getElement(elementName);
-                Optional<String> elementResponseValue = Optional.ofNullable(element)
-                                                                .map(Element::getQuestionResponse)
-                                                                .map(QuestionResponse::getResponseValue);
-                if (elementResponseValue.isPresent()) {
-                    if (element.getQuestionResponse()
-                               .getResponseValue()
-                               .equalsIgnoreCase(compareTo)) {
-                        return true;
-                    }
-                }
-            }
-        } //if anything was entered for an AMT
-        else if(elementType.equals(ElementTypes.AMT_CODE) || elementType.equals(ElementTypes.QTY_CODE)){
-            for (String elementName : elementNamesList) {
-                Element element = page.getElement(elementName);
-                Optional<String> elementResponseValue = Optional.ofNullable(element)
-                                                                .map(Element::getQuestionResponse)
-                                                                .map(QuestionResponse::getResponseValue);
-                if (elementResponseValue.isPresent()) {
-                     return true;
-                }
-            }
-        }
+    private ResponseEvaluationUtils utils;
+    private QuestionnairePage page;
+    private ExternalElementsProvider extPage;
 
-        return false;
+    @BeforeEach
+    void setUp() {
+        utils = new ResponseEvaluationUtils();
+        page = new QuestionnairePage();
+        extPage = new CompositeQuestionnairePage(); // implements ExternalElementsProvider
     }
-    
-    /**
-     * checks to see if a specified radiobutton is 'yes' or 'no'
-     * selection is passed as string as 'yes' or 'no'
-     * 
-     * @param elementName
-     * @param page
-     * @return
-     */
-    public boolean radioButtonSelectionMatches(String elementName, ExternalElementsProvider page, String selection) {
-        String compareTo = null;
-        switch (selection) {
-        case RADIO_BTN_NO:
-            compareTo = selection;
-            break;
-        case RADIO_BTN_YES:
-            compareTo = selection;
-            break;
-        default:
-            break;
-        }
-        Element element = page.getFromAnyElementSource(elementName);
-        Optional<String> elementResponseValue = Optional.ofNullable(element)
-                                                        .map(Element::getQuestionResponse)
-                                                        .map(QuestionResponse::getResponseValue);
-        if (elementResponseValue.isPresent()) {
-            if (element.getQuestionResponse()
-                       .getResponseValue()
-                       .equalsIgnoreCase(compareTo)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * this method compares the response value of a select
-     * to a list of one or more Strings
-     * the selected value can only be one
-     * @param elementName
-     * @param page
-     * @param compareToList
-     * @return
-     */
-    public boolean dropdownMenuSelectedOptionMatches(String elementName, QuestionnairePage page,
-            List<String> compareToList) {
-        Element element = page.getElement(elementName);
-        Optional<String> elementResponseValue = Optional.ofNullable(element)
-                                                        .map(Element::getQuestionResponse)
-                                                        .map(QuestionResponse::getResponseValue);
-        if (elementResponseValue.isPresent()) {
-            for (String compareTo : compareToList) {
-                if (element.getQuestionResponse()
-                           .getResponseValue()
-                           .equalsIgnoreCase(compareTo)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-    
-    
-    /**
-     * this method check the first element of a selected page
-     * for a response
-     * @param elementName
-     * @param page
-     * @return
-     */
-    public boolean firstElementsAnswered(String elementName, QuestionnairePage page) {
-        Element element = page.getElement(elementName);
-        Optional<String> elementResponseValue = Optional.ofNullable(element)
-                                                        .map(Element::getQuestionResponse)
-                                                        .map(QuestionResponse::getResponseValue);
-        if (elementResponseValue.isPresent()) {
-            
-                    return true;
-        }
-               
-       
-        return false;
-    }
-    
-    /**
-     * this method check the first element of a selected page
-     * for a response
-     * @param elementName
-     * @param page
-     * @return
-     */
-    public boolean lastElementsAnswered(String elementName, ExternalElementsProvider page) {
-        Element element = page.getFromAnyElementSource(elementName);
-        Optional<String> elementResponseValue = Optional.ofNullable(element)
-                                                        .map(Element::getQuestionResponse)
-                                                        .map(QuestionResponse::getResponseValue);
-        if (elementResponseValue.isPresent()) {
-            
-                    return true;
-        }
-               
-       
-        return false;
-    }
-    
-    /**
-     * gets the response value from element, if present
-     * checks if the response value == checkAgainst
-     * @param element
-     * @return
-     */
-    public boolean isResponseValueEqualToNumber(Element element, int checkAgainst) {
-        Optional<String> responseValue = Optional.ofNullable(element)
-                .map(Element::getQuestionResponse)
-                .map(QuestionResponse::getResponseValue);
-        if (responseValue.isPresent()) {
-            try {
-                return Integer.valueOf(responseValue.get()) == checkAgainst;
-            } catch (NumberFormatException e) {
-                return false;
-            }
-        }
-        return false;
-    }
-    public boolean isResponseValueEqualToYesNo(Element element, String checkAgainst) {
-        Optional<String> responseValue = Optional.ofNullable(element)
-                .map(Element::getQuestionResponse)
-                .map(QuestionResponse::getResponseValue);
-        if (responseValue.isPresent()) {
-            try {
-                return checkAgainst.equals(responseValue.get());
-            } catch (Exception e) {
-                return false;
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * gets the response value from element, if present
-     * checks if the response value == checkAgainst
-     * @param element
-     * @return
-     */
-    public boolean isResponseValueEqualToNumber(Element element, long checkAgainst) {
-        Optional<String> responseValue = Optional.ofNullable(element)
-                .map(Element::getQuestionResponse)
-                .map(QuestionResponse::getResponseValue);
-        if (responseValue.isPresent()) {
-            try {
-                return Long.valueOf(responseValue.get()) == checkAgainst;
-            } catch (NumberFormatException e) {
-                return false;
-            }
-        }
-        return false;
-    }
-    
-    public boolean isCalendarResponse2017(Element element, int checkAgainst) {
-        Optional<String> responseValue = Optional.ofNullable(element)
-                .map(Element::getQuestionResponse)
-                .map(QuestionResponse::getResponseValue);
-        if (responseValue.isPresent()) {
-            try {
-                return Integer.valueOf(responseValue.get().replaceAll(",", "")) == checkAgainst;
-            } catch (NumberFormatException e) {
-                return false;
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * this method check Aggregate Amount of a selected page
-     * for a response
-     * @param elementName
-     * @param page
-     * @return
-     */
-	public boolean checkAggregateAmount(String elementName, ExternalElementsProvider page, long checkAgainst) {
-		Element element = page.getFromAnyElementSource(elementName);
-		Optional<String> elementResponseValue = Optional.ofNullable(element).map(Element::getQuestionResponse)
-				.map(QuestionResponse::getResponseValue);
-		if (elementResponseValue.isPresent()) {
 
-			try {
-				return Long.valueOf(elementResponseValue.get().replaceAll(",", "")) <= checkAgainst;
-			} catch (NumberFormatException e) {
-				return false;
-			}
-		}
+    private Element buildElement(String name, String responseValue) {
+        QuestionResponse qr = new QuestionResponse();
+        qr.setResponseValue(responseValue);
+        return Element.builder()
+                .officialName(name)
+                .questionResponse(qr)
+                .build();
+    }
 
-		return false;
-	}
-	
-    
-    public void rowArrangeElements(Model model, QuestionnairePage page, List<String> filteredPageElements) {
-        List<List<Element>> pageElement= new ArrayList<>();
-        List<Element> pageElementA= new ArrayList<>();
-        List<Element> pageElementB= new ArrayList<>();
-        List<Element> pageElementC= new ArrayList<>();
-        page.getElements().forEach(e->{
-            if(("QI_NUM_ACCNTS_POP").equals(e.getOfficialName()) || ("QI_USED_SAFE_HBR_MTHD_A").equals(e.getOfficialName()) ||
-                    ("QI_USED_SAFE_HBR_MTHD_B").equals(e.getOfficialName()) ||("QI_USED_SAFE_HBR_MTHD_C").equals(e.getOfficialName())
-                    ||("QI_USED_SAFE_HBR_MTHD_D").equals(e.getOfficialName()) ){
-                pageElementA.add(e);
-            }else if(("QI_NUM_ACCNTS_SMPL").equals(e.getOfficialName()) || ("QI_NUM_ACCNTS_SMPL_A").equals(e.getOfficialName()) ||
-                    ("QI_NUM_ACCNTS_SMPL_B").equals(e.getOfficialName()) ||("QI_NUM_ACCNTS_SMPL_C").equals(e.getOfficialName())
-                    ||("QI_NUM_ACCNTS_SMPL_D").equals(e.getOfficialName()) ){
-                pageElementB.add(e);
-            }else if(("QI_TOT_UNDRWTHLDNG_SMPL").equals(e.getOfficialName()) || ("TOT_UNDRWTHLDNG_SMPL_A").equals(e.getOfficialName()) ||
-                    ("TOT_UNDRWTHLDNG_SMPL_B").equals(e.getOfficialName()) ||("TOT_UNDRWTHLDNG_SMPL_C").equals(e.getOfficialName())
-                    ||("TOT_UNDRWTHLDNG_SMPL_D").equals(e.getOfficialName())   ){
-                pageElementC.add(e);
-            }
-        });
-        pageElement.add(pageElementA);
-        pageElement.add(pageElementB);
-        pageElement.add(pageElementC);
-        page.getElements().removeIf(e->filteredPageElements.contains(e.getOfficialName()));
-        model.addAttribute("pageElements", pageElement);
-    }
-    
-    public void appendixTableOneElements(Model model, QuestionnairePage page, List<String> filteredPageElements) {
-        List<List<Element>> pageElement= new ArrayList<>();
-        List<Element> pageElementA= new ArrayList<>();
-        List<Element> pageElementB= new ArrayList<>();
-        List<Element> pageElementC= new ArrayList<>();
-        List<Element> pageElementD= new ArrayList<>();
-        List<Element> pageElementE= new ArrayList<>();
-        List<Element> pageElementF= new ArrayList<>();
-        List<Element> pageElementG= new ArrayList<>();
-        List<Element> pageElementH= new ArrayList<>();
-        
-		Element A = Element.builder().id(0).text("A").officialName("A").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementA.add(A);
-		Element B = Element.builder().id(1).text("B").officialName("B").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementB.add(B);
-		Element C = Element.builder().id(2).text("C").officialName("C").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementC.add(C);
-		Element D = Element.builder().id(3).text("D").officialName("D").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementD.add(D);
-		Element E = Element.builder().id(4).text("E").officialName("E").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementE.add(E);
-		Element F = Element.builder().id(5).text("F").officialName("F").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementF.add(F);
-		Element G = Element.builder().id(6).text("G").officialName("G").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementG.add(G);
-		Element H = Element.builder().id(7).text("H").officialName("H").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementH.add(H);
-        
-        page.getElements().forEach(e->{
-            if(("QI_TOT_GROSS_INCME").equals(e.getOfficialName()) || ("QI_TOT_GROSS_INCME_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_GROSS_INCME_Y2").equals(e.getOfficialName()) ||("QI_TOT_GROSS_INCME_Y3").equals(e.getOfficialName())){
-                pageElementA.add(e);
-            }else if(("QI_TOT_FED_TAX_WTHLD").equals(e.getOfficialName()) || ("QI_TOT_FED_TAX_WTHLD_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_FED_TAX_WTHLD_Y2").equals(e.getOfficialName()) ||("QI_TOT_FED_TAX_WTHLD_Y3").equals(e.getOfficialName())){
-                pageElementB.add(e);
-            }else if(("QI_TOT_TAX_WTHLD_OTR").equals(e.getOfficialName()) || ("QI_TOT_TAX_WTHLD_OTR_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_TAX_WTHLD_OTR_Y2").equals(e.getOfficialName()) ||("QI_TOT_TAX_WTHLD_OTR_Y3").equals(e.getOfficialName()) ){
-                pageElementC.add(e);          
-            }else if(("QI_TOT_WTHLD_CRED_REPT").equals(e.getOfficialName()) || ("QI_TOT_WTHLD_CRED_REPT_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_WTHLD_CRED_REPT_Y2").equals(e.getOfficialName()) ||("QI_TOT_WTHLD_CRED_REPT_Y3").equals(e.getOfficialName()) ){
-                pageElementD.add(e);           
-            }else if(("QI_TOT_GROSS_INCM_RPT").equals(e.getOfficialName()) || ("QI_TOT_GROSS_INCM_RPT_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_GROSS_INCM_RPT_Y2").equals(e.getOfficialName()) ||("QI_TOT_GROSS_INCM_RPT_Y3").equals(e.getOfficialName()) ){
-                pageElementE.add(e);         
-            }else if(("QI_TOT_WTHLDNG_CRED").equals(e.getOfficialName()) || ("QI_TOT_WTHLDNG_CRED_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_WTHLDNG_CRED_Y2").equals(e.getOfficialName()) ||("QI_TOT_WTHLDNG_CRED_Y3").equals(e.getOfficialName()) ){
-                pageElementF.add(e);     
-            }else if(("QI_TOT_OVRWTHLD_TAX").equals(e.getOfficialName()) || ("QI_TOT_OVRWTHLD_TAX_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_OVRWTHLD_TAX_Y2").equals(e.getOfficialName()) ||("QI_TOT_OVRWTHLD_TAX_Y3").equals(e.getOfficialName()) ){
-                pageElementG.add(e);                        
-            }else if(("QI_TOT_TAX_PAID_WTH").equals(e.getOfficialName()) || ("QI_TOT_TAX_PAID_WTH_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_TAX_PAID_WTH_Y2").equals(e.getOfficialName()) ||("QI_TOT_TAX_PAID_WTH_Y3").equals(e.getOfficialName()) ){
-                pageElementH.add(e);
-            }
-            
-        });
-        pageElement.add(pageElementA);
-        pageElement.add(pageElementB);
-        pageElement.add(pageElementC);
-        pageElement.add(pageElementD);
-        pageElement.add(pageElementE);
-        pageElement.add(pageElementF);
-        pageElement.add(pageElementG);
-        pageElement.add(pageElementH);
-        model.addAttribute("tableOneElements", pageElement);
-    }
-    
-    public void appendixTableTwoElements(Model model, QuestionnairePage page, List<String> filteredPageElements) {
-        List<List<Element>> pageElement= new ArrayList<>();
-        List<Element> pageElementI= new ArrayList<>();
-        List<Element> pageElementJ= new ArrayList<>();
-        List<Element> pageElementK= new ArrayList<>();
-        List<Element> pageElementL= new ArrayList<>();
-        List<Element> pageElementM= new ArrayList<>();
-        List<Element> pageElementN= new ArrayList<>();
-        List<Element> pageElementO= new ArrayList<>();
-        
-		Element I = Element.builder().id(0).text("I").officialName("I").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementI.add(I);
-		Element J = Element.builder().id(1).text("J").officialName("J").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementJ.add(J);
-		Element K = Element.builder().id(2).text("K").officialName("K").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementK.add(K);
-		Element L = Element.builder().id(3).text("L").officialName("L").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementL.add(L);
-		Element M = Element.builder().id(4).text("M").officialName("M").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementM.add(M);
-		Element N = Element.builder().id(5).text("N").officialName("N").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementN.add(N);
-		Element O = Element.builder().id(6).text("O").officialName("O").elementDataType("NR").pageId(109).expectedResponse(new TextExpectedResponse()).build();
-		pageElementO.add(O);
+    @Test
+    void allElementsAnswered_checkBoxes_allAnswered() {
+        page.addElement(buildElement("A", "1"));
+        page.addElement(buildElement("B", "1"));
 
-        
-        page.getElements().forEach(e->{
-            if(("QI_TOT_GRS_AMNTS").equals(e.getOfficialName()) || ("QI_TOT_GRS_AMNTS_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_GRS_AMNTS_Y2").equals(e.getOfficialName()) ||("QI_TOT_GRS_AMNTS_Y3").equals(e.getOfficialName())){
-                pageElementI.add(e);
-            }else if(("QI_TAX_WTHLD_BY_QI").equals(e.getOfficialName()) || ("QI_TAX_WTHLD_BY_QI_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TAX_WTHLD_BY_QI_Y2").equals(e.getOfficialName()) ||("QI_TAX_WTHLD_BY_QI_Y3").equals(e.getOfficialName())){
-                pageElementJ.add(e);  
-            }else if(("QI_TAX_WTHLD_BY_OTR").equals(e.getOfficialName()) || ("QI_TAX_WTHLD_BY_OTR_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TAX_WTHLD_BY_OTR_Y2").equals(e.getOfficialName()) ||("QI_TAX_WTHLD_BY_OTR_Y3").equals(e.getOfficialName()) ){
-                pageElementK.add(e);  
-            }else if(("QI_ADJSMNT_OVERWITH").equals(e.getOfficialName()) || ("QI_ADJSMNT_OVERWITH_Y1").equals(e.getOfficialName()) ||
-                    ("QI_ADJSMNT_OVERWITH_Y2").equals(e.getOfficialName()) ||("QI_ADJSMNT_OVERWITH_Y3").equals(e.getOfficialName()) ){
-                pageElementL.add(e);    
-            }else if(("QI_TOT_TAX_REPRT_WTH").equals(e.getOfficialName()) || ("QI_TOT_TAX_REPRT_WTH_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_TAX_REPRT_WTH_Y2").equals(e.getOfficialName()) ||("QI_TOT_TAX_REPRT_WTH_Y3").equals(e.getOfficialName()) ){
-                pageElementM.add(e);     
-            }else if(("QI_TOT_NET_TAX_LIAB").equals(e.getOfficialName()) || ("QI_TOT_NET_TAX_LIAB_Y1").equals(e.getOfficialName()) ||
-                    ("QI_TOT_NET_TAX_LIAB_Y2").equals(e.getOfficialName()) ||("QI_TOT_NET_TAX_LIAB_Y3").equals(e.getOfficialName()) ){
-                pageElementN.add(e);  
-            }else if(("QI_CRDTS_AMNT_WTHLD").equals(e.getOfficialName()) || ("QI_CRDTS_AMNT_WTHLD_Y1").equals(e.getOfficialName()) ||
-                    ("QI_CRDTS_AMNT_WTHLD_Y2").equals(e.getOfficialName()) ||("QI_CRDTS_AMNT_WTHLD_Y3").equals(e.getOfficialName()) ){
-                pageElementO.add(e);                        
-            }          
-        });
-        pageElement.add(pageElementI);
-        pageElement.add(pageElementJ);
-        pageElement.add(pageElementK);
-        pageElement.add(pageElementL);
-        pageElement.add(pageElementM);
-        pageElement.add(pageElementN);
-        pageElement.add(pageElementO);
-        model.addAttribute("tableTwoElements", pageElement);
+        boolean result = utils.allElementsAnswered(List.of("A", "B"), page, ElementTypes.CBX_CODE);
+        assertTrue(result);
     }
-    
-	public void onRowTables(Model model, QuestionnairePage page, String elementName, String modelAttributeLabel) {
-        List<List<Element>> pageElement= new ArrayList<>();
-        List<Element> pageElements= new ArrayList<>();
-      
-		page.getElements().forEach(e -> {
-			if ((elementName).equals(e.getOfficialName()) || (elementName + "_Y1").equals(e.getOfficialName())
-					|| (elementName + "_Y2").equals(e.getOfficialName())
-					|| (elementName + "_Y3").equals(e.getOfficialName())) {
-				pageElements.add(e);
-			} 
-		});
-        pageElement.add(pageElements);
-        modelAttributeLabel = modelAttributeLabel + "_model";
-        model.addAttribute(modelAttributeLabel, pageElement);
+
+    @Test
+    void allElementsAnswered_checkBoxes_oneUnchecked_returnsFalse() {
+        page.addElement(buildElement("A", "1"));
+        page.addElement(buildElement("B", "0"));
+
+        assertFalse(utils.allElementsAnswered(List.of("A", "B"), page, ElementTypes.CBX_CODE));
     }
-    
+
+    @Test
+    void oneOrMoreElementsAnswered_checkBoxes_trueIfOneChecked() {
+        page.addElement(buildElement("A", "0"));
+        page.addElement(buildElement("B", "1"));
+        assertTrue(utils.oneOrMoreElementsAnswered(List.of("A", "B"), page, ElementTypes.CBX_CODE));
+    }
+
+    @Test
+    void oneOrMoreElementsAnswered_numericOrQty_withResponse() {
+        page.addElement(buildElement("X", "123"));
+        assertTrue(utils.oneOrMoreElementsAnswered(List.of("X"), page, ElementTypes.AMT_CODE));
+    }
+
+    @Test
+    void radioButtonSelectionMatches_yesMatch() {
+        Element el = buildElement("RAD1", "YES");
+        extPage = new CompositeQuestionnairePage();
+        ((CompositeQuestionnairePage)extPage).addElement(el);
+        assertTrue(utils.radioButtonSelectionMatches("RAD1", extPage, "YES"));
+        assertFalse(utils.radioButtonSelectionMatches("RAD1", extPage, "NO"));
+    }
+
+    @Test
+    void dropdownMenuSelectedOptionMatches_caseInsensitiveMatch() {
+        page.addElement(buildElement("SEL", "Option1"));
+        assertTrue(utils.dropdownMenuSelectedOptionMatches("SEL", page, List.of("option1", "other")));
+        assertFalse(utils.dropdownMenuSelectedOptionMatches("SEL", page, List.of("X", "Y")));
+    }
+
+    @Test
+    void firstElementsAnswered_and_lastElementsAnswered_presentAndMissing() {
+        page.addElement(buildElement("F", "abc"));
+        assertTrue(utils.firstElementsAnswered("F", page));
+
+        extPage = new CompositeQuestionnairePage();
+        ((CompositeQuestionnairePage)extPage).addElement(buildElement("L", "val"));
+        assertTrue(utils.lastElementsAnswered("L", extPage));
+        assertFalse(utils.lastElementsAnswered("Q", extPage));
+    }
+
+    @Test
+    void isResponseValueEqualToNumber_intAndLong() {
+        Element eNum = buildElement("num", "42");
+        assertTrue(utils.isResponseValueEqualToNumber(eNum, 42));
+        assertTrue(utils.isResponseValueEqualToNumber(eNum, 42L));
+
+        Element bad = buildElement("bad", "notnum");
+        assertFalse(utils.isResponseValueEqualToNumber(bad, 100));
+    }
+
+    @Test
+    void isResponseValueEqualToYesNo_strMatch() {
+        Element e = buildElement("YN", "YES");
+        assertTrue(utils.isResponseValueEqualToYesNo(e, "YES"));
+        assertFalse(utils.isResponseValueEqualToYesNo(e, "NO"));
+        Element nullE = buildElement("NIL", null);
+        assertFalse(utils.isResponseValueEqualToYesNo(nullE, "YES"));
+    }
+
+    @Test
+    void isCalendarResponse2017_validAndInvalid() {
+        Element e = buildElement("C", "1,234");
+        assertTrue(utils.isCalendarResponse2017(e, 1234));
+        Element bad = buildElement("D", "abc");
+        assertFalse(utils.isCalendarResponse2017(bad, 100));
+    }
+
+    @Test
+    void checkAggregateAmount_lessThanOrEqual_trueAndFalse() {
+        CompositeQuestionnairePage ce = new CompositeQuestionnairePage();
+        ce.addElement(buildElement("amt", "500"));
+        assertTrue(utils.checkAggregateAmount("amt", ce, 1000));
+        assertFalse(utils.checkAggregateAmount("amt", ce, 400));
+        ce = new CompositeQuestionnairePage();
+        ce.addElement(buildElement("amt", "notnum"));
+        assertFalse(utils.checkAggregateAmount("amt", ce, 1000));
+    }
+
+    @Test
+    void rowArrangeElements_removesFilteredAndGroups() {
+        QuestionnairePage qp = new QuestionnairePage();
+        Element eA = buildElement("QI_NUM_ACCNTS_POP", "1");
+        Element eX = buildElement("OTHER", "1");
+        qp.addElement(eA);
+        qp.addElement(eX);
+
+        ConcurrentModel model = new ConcurrentModel();
+        utils.rowArrangeElements(model, qp, List.of("OTHER"));
+
+        @SuppressWarnings("unchecked")
+        var groups = (List<List<Element>>)model.getAttribute("pageElements");
+        assertNotNull(groups);
+        assertEquals(3, groups.size());
+        assertFalse(qp.getElements().stream().anyMatch(e->"OTHER".equals(e.getOfficialName())));
+    }
+
+    @Test
+    void appendixTableOneElements_buildsCorrectGroups() {
+        QuestionnairePage qp = new QuestionnairePage();
+        ConcurrentModel model = new ConcurrentModel();
+        utils.appendixTableOneElements(model, qp, List.of());
+
+        assertNotNull(model.getAttribute("tableOneElements"));
+        @SuppressWarnings("unchecked")
+        var table = (List<List<Element>>)model.getAttribute("tableOneElements");
+        assertEquals(8, table.size());
+    }
+
+    @Test
+    void appendixTableTwoElements_buildsCorrectGroups() {
+        QuestionnairePage qp = new QuestionnairePage();
+        ConcurrentModel model = new ConcurrentModel();
+        utils.appendixTableTwoElements(model, qp, List.of());
+
+        assertNotNull(model.getAttribute("tableTwoElements"));
+        @SuppressWarnings("unchecked")
+        var table = (List<List<Element>>)model.getAttribute("tableTwoElements");
+        assertEquals(7, table.size());
+    }
+
+    @Test
+    void onRowTables_filtersByElementName() {
+        QuestionnairePage qp = new QuestionnairePage();
+        qp.addElement(buildElement("MYELEM", "val"));
+        qp.addElement(buildElement("MYELEM_Y1", "val1"));
+        qp.addElement(buildElement("OTHER", "x"));
+        ConcurrentModel model = new ConcurrentModel();
+        utils.onRowTables(model, qp, "MYELEM", "label");
+
+        @SuppressWarnings("unchecked")
+        var lst = (List<List<Element>>)model.getAttribute("label_model");
+        assertEquals(1, lst.size());
+        assertEquals(2, lst.get(0).size());
+    }
 }
