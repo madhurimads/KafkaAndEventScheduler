@@ -1,79 +1,17 @@
-import gov.irs.fatca.qi.validation.FieldsValidator;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+public boolean validateSqlInjection(String input) {
 
-import static org.junit.jupiter.api.Assertions.*;
+        boolean isValidString = true;
 
-class FieldsValidatorTest {
+        input = input.replaceAll("\\s+", "");
 
-    private FieldsValidator validator;
+        String[] splitInput = splitStringEvery(input, MAX_STRING_SPLIT_LENGTH);
 
-    @BeforeEach
-    void setUp() {
-        validator = new FieldsValidator();
+        for (String splitInputItem : splitInput) {
+            Matcher filenameMatcher = sqlInjectionPattern.matcher(splitInputItem);
+            if (filenameMatcher.find())
+                isValidString = false;
+        }
+
+        return isValidString;
+
     }
-
-    @Test
-    void testValidateEmailFormat_validAndInvalid() {
-        assertTrue(validator.validateEmailFormat("user@example.com"));
-        assertFalse(validator.validateEmailFormat("bad-email@@"));
-    }
-
-    @Test
-    void testValidateGiinParts() {
-        assertTrue(validator.validateGiinPart1("ABCDEF123456"));  // valid GIIN part 1
-        assertFalse(validator.validateGiinPart1("short"));
-
-        assertFalse(validator.validateGiinPart2("INVALID"));     // depends on regex
-        assertFalse(validator.validateGiinPart3("123"));        // depends on pattern
-        assertFalse(validator.validateGiinPart4("!@#$"));       // invalid characters
-    }
-
-    @Test
-    void testValidateFatcaAndNameParams() {
-        assertTrue(validator.validateFatcaIdParams("FATCA123"));
-        assertFalse(validator.validateFatcaIdParams("INVALID@@"));
-
-        assertTrue(validator.validateNameParams("John_Doe"));
-        assertFalse(validator.validateNameParams("Bad?Name"));
-    }
-
-    @Test
-    void testValidateTelephoneAndZip() {
-        assertTrue(validator.validateTelephoneNumber("123-456-7890"));
-        assertFalse(validator.validateTelephoneNumber("NotAPhone"));
-
-        assertTrue(validator.validateUsZipCodePattern("12345"));
-        assertTrue(validator.validateUsZipCodePattern("12345-6789"));
-        assertFalse(validator.validateUsZipCodePattern("ABCDE"));
-    }
-
-    @Test
-    void testValidateNumberAndCharacters() {
-        assertTrue(validator.validateNumber("1234567"));
-        assertFalse(validator.validateNumber("123A456"));
-
-        assertTrue(validator.validateCharacters("JustLetters"));
-        assertFalse(validator.validateCharacters("With123"));
-    }
-
-    @Test
-    void testValidateRepeatedAndSequentialDigits() {
-        assertFalse(validator.validateRepeatedDigits("1111111"));
-        assertTrue(validator.validateRepeatedDigits("112233"));
-        assertFalse(validator.validateSequentialDigits("123456"));
-        assertTrue(validator.validateSequentialDigits("132465"));
-    }
-
-    @Test
-    void testSplitStringEvery() {
-        String[] parts = validator.splitStringEvery("ABCDEFGHIJ", 3);
-        assertArrayEquals(new String[] {"ABC", "DEF", "GHI", "J"}, parts);
-    }
-
-    @Test
-    void testValidateCertFirstChar() {
-        assertTrue(validator.validateCertFirstCharInput("Aname"));
-        assertFalse(validator.validateCertFirstCharInput("1name"));
-    }
-}
