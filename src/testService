@@ -1,582 +1,90 @@
-import java.time.Year;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.springframework.util.StringUtils;
-
+import gov.irs.fatca.qi.core.util.DropdownGeneratorUtils;
 import gov.irs.fatca.qi.domain.admin.EntitySubmissionInfo;
-import gov.irs.fatca.qi.domain.certification.enums.CCGRequestStatusEnum;
-import gov.irs.fatca.qi.domain.certification.enums.CertCannedMessageEnum;
-import gov.irs.fatca.qi.domain.certification.enums.CertStatusChangeReasonEnum;
-import gov.irs.fatca.qi.domain.certification.enums.CertificationFileContentTypeEnum;
-import gov.irs.fatca.qi.domain.certification.enums.CertificationStatusEnum;
-import gov.irs.fatca.qi.domain.entity.CertificationEntitySummary;
-import gov.irs.fatca.qi.domain.entity.ProfileInfo;
-import gov.irs.fatca.qi.domain.enums.AdminApplicationStatusEnum;
-import gov.irs.fatca.qi.domain.enums.AdminEntityStatusEnum;
-import gov.irs.fatca.qi.domain.enums.AdminRenewalStatusEnum;
-import gov.irs.fatca.qi.domain.enums.AdminSearchByStatusEnum;
 import gov.irs.fatca.qi.domain.enums.AdminStatusEnum;
 import gov.irs.fatca.qi.domain.enums.ApplicationCannedMessageEnum;
-import gov.irs.fatca.qi.domain.enums.CCGStatusFilterEnum;
-import gov.irs.fatca.qi.domain.enums.Chapter3EligibilityEnum;
-import gov.irs.fatca.qi.domain.enums.Chapter4EligibilityEnum;
-import gov.irs.fatca.qi.domain.enums.ContentTypeEnum;
-import gov.irs.fatca.qi.domain.enums.EinStatusEnum;
-import gov.irs.fatca.qi.domain.enums.EntityStatusCannedMessageEnum;
-import gov.irs.fatca.qi.domain.enums.EntityTypeEnum;
-import gov.irs.fatca.qi.domain.enums.LegalNameChangeTypeEnum;
-import gov.irs.fatca.qi.domain.enums.OverdueProcessDropdownEnum;
-import gov.irs.fatca.qi.domain.enums.QiSubEntityTypeEnum;
-import gov.irs.fatca.qi.domain.enums.QslQddDropDownEnum;
 import gov.irs.fatca.qi.domain.enums.RenewalCannedMessageEnum;
-import gov.irs.fatca.qi.domain.enums.StatusChangeReasonsEnum;
+import gov.irs.fatca.qi.domain.entity.ProfileInfo;
+import org.junit.jupiter.api.Test;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 
-public abstract class DropdownGeneratorUtils {
+import java.util.Map;
 
-    public static Map<String, String> statusDropdown(EntitySubmissionInfo entitySubmissionInfo) {
-        EnumSet<AdminStatusEnum> adminStatusEnum = EnumSet.allOf(AdminStatusEnum.class);
-        List<AdminStatusEnum> adminStatusList = new ArrayList<AdminStatusEnum>(adminStatusEnum);
-        Map<String, String> adminStatusMap = adminStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
+import static org.junit.jupiter.api.Assertions.*;
 
-        if (!entitySubmissionInfo.getSubmissionTypeCode().equalsIgnoreCase("RN")) {
+class DropdownGeneratorUtilsTest {
 
-            adminStatusMap.remove(AdminStatusEnum.OVERDUE_STATUS.getCode());
-        }
+    @Test
+    void statusDropdown_removesOverdueIfNotRN_andMissingFieldsRemovesSubmitted() {
+        EntitySubmissionInfo info = new EntitySubmissionInfo();
+        info.setSubmissionTypeCode("AP"); // not RN
+        info.setCountryOfOrg("");
+        info.setEntityType("");
+        info.setEntityLegalName("");
+        // KYC irrelevant unless entityType QI
 
-        if (StringUtils.isEmpty(entitySubmissionInfo.getCountryOfOrg())
-                || StringUtils.isEmpty(entitySubmissionInfo.getEntityType())
-                || StringUtils.isEmpty(entitySubmissionInfo.getEntityLegalName())
-                || (entitySubmissionInfo.getEntityType().equalsIgnoreCase("QI")
-                        && StringUtils.isEmpty(entitySubmissionInfo.getKycJurisdiction()))) {
+        Map<String, String> dropdown = DropdownGeneratorUtils.statusDropdown(info);
 
-            adminStatusMap.remove(AdminStatusEnum.SUBMITTED_STATUS.getCode());
-        }
-
-        return adminStatusMap;
-
+        assertFalse(dropdown.containsKey(AdminStatusEnum.OVERDUE_STATUS.getCode()));
+        assertFalse(dropdown.containsKey(AdminStatusEnum.SUBMITTED_STATUS.getCode()));
+        // Some other status should remain
+        assertTrue(dropdown.containsKey(AdminStatusEnum.DRAFT_STATUS.getCode()));
     }
 
-    public static Map<String, String> einStatusDropdown() {
-        EnumSet<EinStatusEnum> einStatusEnum = EnumSet.allOf(EinStatusEnum.class);
-        List<EinStatusEnum> einStatusList = new ArrayList<EinStatusEnum>(einStatusEnum);
-        Map<String, String> einStatusMap = einStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
+    @Test
+    void statusDropdown_keepsOverdueForRN_andHasAllFields() {
+        EntitySubmissionInfo info = new EntitySubmissionInfo();
+        info.setSubmissionTypeCode("RN");
+        info.setCountryOfOrg("US");
+        info.setEntityType("ABC");
+        info.setEntityLegalName("Name");
+        info.setKycJurisdiction("Jurisdiction"); // only needed if type is QI
 
-        return einStatusMap;
+        Map<String, String> dropdown = DropdownGeneratorUtils.statusDropdown(info);
 
+        assertTrue(dropdown.containsKey(AdminStatusEnum.OVERDUE_STATUS.getCode()));
+        assertTrue(dropdown.containsKey(AdminStatusEnum.SUBMITTED_STATUS.getCode()));
     }
 
-    public static Map<String, String> applicationCannedMessageDropdown() {
-        EnumSet<ApplicationCannedMessageEnum> applicationCannedMessageEnum = EnumSet
-                .allOf(ApplicationCannedMessageEnum.class);
-        List<ApplicationCannedMessageEnum> applicationCannedMessageList = new ArrayList<ApplicationCannedMessageEnum>(
-                applicationCannedMessageEnum);
-        Map<String, String> applicationCannedMessageMap = applicationCannedMessageList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-        applicationCannedMessageMap.remove(ApplicationCannedMessageEnum.C_051.getCode());
-
-        return applicationCannedMessageMap;
-
+    @Test
+    void applicationCannedMessageDropdown_excludesC051() {
+        Map<String, String> map = DropdownGeneratorUtils.applicationCannedMessageDropdown();
+        assertFalse(map.containsKey(ApplicationCannedMessageEnum.C_051.getCode()));
+        // Other enums should exist
+        assertTrue(map.size() > 0);
     }
 
-    public static Map<String, String> renewalCannedMessageDropdown() {
-        EnumSet<RenewalCannedMessageEnum> renewalCannedMessageEnum = EnumSet.allOf(RenewalCannedMessageEnum.class);
-        List<RenewalCannedMessageEnum> renewalCannedMessageList = new ArrayList<RenewalCannedMessageEnum>(
-                renewalCannedMessageEnum);
-        Map<String, String> renewalCannedMessageMap = renewalCannedMessageList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-        renewalCannedMessageMap.remove(RenewalCannedMessageEnum.C_052.getCode());
-        return renewalCannedMessageMap;
-
+    @Test
+    void renewalCannedMessageDropdown_excludesC052() {
+        Map<String, String> map = DropdownGeneratorUtils.renewalCannedMessageDropdown();
+        assertFalse(map.containsKey(RenewalCannedMessageEnum.C_052.getCode()));
+        assertTrue(map.size() > 0);
     }
 
-    public static Map<String, String> applicationInsufficientCannedMessageDropdown() {
-        EnumSet<ApplicationCannedMessageEnum> applicationCannedMessageEnum = EnumSet
-                .allOf(ApplicationCannedMessageEnum.class);
-        List<ApplicationCannedMessageEnum> applicationCannedMessageList = new ArrayList<ApplicationCannedMessageEnum>(
-                applicationCannedMessageEnum);
-        Map<String, String> applicationCannedMessageMap = applicationCannedMessageList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
+    @Test
+    void contentTypeDropdown_profileInfoConditionsApplied() {
+        ProfileInfo prof = new ProfileInfo();
+        prof.setQdd(false);
+        prof.setEntityStatus("AP"); // triggers removal of FORM_SS_4
+        var map = DropdownGeneratorUtils.contentTypeDropdown(prof);
 
-        return applicationCannedMessageMap;
-
+        // PAPER_ADDITIONAL_BRANCH_INFORMATION and PAPER_FORM14345 always removed
+        assertFalse(map.containsKey("PAPER_ADDITIONAL_BRANCH_INFORMATION"));
+        assertFalse(map.containsKey("PAPER_FORM14345"));
+        // QDD_TRANSACTIONS removed since not QDD
+        assertFalse(map.containsKey("QDD_TRANSACTIONS"));
     }
 
-    public static Map<String, String> renewalInsufficientInformationCannedMessageDropdown() {
-        EnumSet<RenewalCannedMessageEnum> renewalCannedMessageEnum = EnumSet.allOf(RenewalCannedMessageEnum.class);
-        List<RenewalCannedMessageEnum> renewalCannedMessageList = new ArrayList<RenewalCannedMessageEnum>(
-                renewalCannedMessageEnum);
-        Map<String, String> renewalCannedMessageMap = renewalCannedMessageList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
+    @Test
+    void reviewAndDueYearsDropdown_rangeCorrect() {
+        int start = 2020;
+        Map<String, String> review = DropdownGeneratorUtils.ReviewYearsDropdown(start);
+        Map<String, String> due = DropdownGeneratorUtils.dueYearsDropdown(start);
 
-        return renewalCannedMessageMap;
-
+        int current = java.time.Year.now().getValue();
+        assertEquals(current - start, review.size());
+        assertEquals(current - start + 1, due.size());
+        assertTrue(review.containsKey(String.valueOf(current - 1)));
+        assertTrue(due.containsKey(String.valueOf(current)));
     }
-
-    public static Map<String, String> entityStatusCannedMessageDropdown() {
-        EnumSet<EntityStatusCannedMessageEnum> entityStatusCannedMessageEnum = EnumSet
-                .allOf(EntityStatusCannedMessageEnum.class);
-        List<EntityStatusCannedMessageEnum> entityStatusCannedMessageList = new ArrayList<EntityStatusCannedMessageEnum>(
-                entityStatusCannedMessageEnum);
-        Map<String, String> entityStatusCannedMessageMap = entityStatusCannedMessageList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return entityStatusCannedMessageMap;
-
-    }
-    
-    public static Map<String, String> certCannedMessagesDropdown() {
-        EnumSet<CertCannedMessageEnum> certCannedMessageEnum = EnumSet
-                .allOf(CertCannedMessageEnum.class);
-        List<CertCannedMessageEnum> certCannedMessageList = new ArrayList<CertCannedMessageEnum>(
-                certCannedMessageEnum);
-        Map<String, String> certCannedMessageMap = certCannedMessageList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return certCannedMessageMap;
-
-    }
-
-    public static Map<String, String> statusReasonChangeDropdown() {
-        EnumSet<StatusChangeReasonsEnum> statusChangeReasonsEnum = EnumSet.allOf(StatusChangeReasonsEnum.class);
-        List<StatusChangeReasonsEnum> statusChangeReasonsList = new ArrayList<StatusChangeReasonsEnum>(
-                statusChangeReasonsEnum);
-        Map<String, String> statusChangeReasonsMap = statusChangeReasonsList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_06.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_26.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_27.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_30.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_31.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_34.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_35.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_36.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_52.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_59.getCode());
-
-        return statusChangeReasonsMap;
-
-    }
-
-    public static Map<String, String> submissionStatusChangeReasonDropdown() {
-        Map<String, String> statusChangeReasonsMap = statusReasonChangeDropdown();
-
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_01.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_02.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_22.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_23.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_32.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_33.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_41.getCode());
-
-        return statusChangeReasonsMap;
-    }
-
-    public static Map<String, String> applicationStatusChangeReasonDropdown() {
-        Map<String, String> statusChangeReasonsMap = submissionStatusChangeReasonDropdown();
-
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_11.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_14.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_16.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_25.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_37.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_48.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_49.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_50.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_51.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_53.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_54.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_55.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_56.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_57.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_58.getCode());
-
-        return statusChangeReasonsMap;
-    }
-
-    public static Map<String, String> renewalStatusChangeReasonDropdown() {
-        Map<String, String> statusChangeReasonsMap = submissionStatusChangeReasonDropdown();
-
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_03.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_04.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_05.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_07.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_08.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_09.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_10.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_19.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_20.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_24.getCode());
-
-        return statusChangeReasonsMap;
-    }
-
-    public static Map<String, String> entityStatusChangeReasonDropdown() {
-        Map<String, String> statusChangeReasonsMap = statusReasonChangeDropdown();
-
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_28.getCode());
-        statusChangeReasonsMap.remove(StatusChangeReasonsEnum.REASON_38.getCode());
-
-        return statusChangeReasonsMap;
-
-    }
-
-    public static Map<String, String> entityTypeDropdown() {
-        EnumSet<EntityTypeEnum> entityTypeEnum = EnumSet.allOf(EntityTypeEnum.class);
-        List<EntityTypeEnum> entityTypeList = new ArrayList<EntityTypeEnum>(entityTypeEnum);
-        Map<String, String> entityTypeMap = entityTypeList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return entityTypeMap;
-
-    }
-
-    public static Map<String, String> entityStatusDropdown() {
-        EnumSet<AdminEntityStatusEnum> adminEntityStatusEnum = EnumSet.allOf(AdminEntityStatusEnum.class);
-        List<AdminEntityStatusEnum> adminEntityStatusList = new ArrayList<AdminEntityStatusEnum>(adminEntityStatusEnum);
-        Map<String, String> adminEntityStatusMap = adminEntityStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return adminEntityStatusMap;
-
-    }
-
-    public static Map<String, String> searchBySubEntityTypeDropdown() {
-        EnumSet<QiSubEntityTypeEnum> qiSubEntityEnum = EnumSet.allOf(QiSubEntityTypeEnum.class);
-        List<QiSubEntityTypeEnum> qiSubEntityList = new ArrayList<QiSubEntityTypeEnum>(qiSubEntityEnum);
-        Map<String, String> qiSubEntityMap = qiSubEntityList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return qiSubEntityMap;
-    }
-    
-    public static Map<String, String> applicationStatusDropdown() {
-        EnumSet<AdminApplicationStatusEnum> adminApplicationStatusEnum = EnumSet
-                .allOf(AdminApplicationStatusEnum.class);
-        List<AdminApplicationStatusEnum> adminApplicationStatusList = new ArrayList<AdminApplicationStatusEnum>(
-                adminApplicationStatusEnum);
-        Map<String, String> adminApplicationStatusMap = adminApplicationStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return adminApplicationStatusMap;
-
-    }
-
-    public static Map<String, String> searchByStatusDropdown() {
-        EnumSet<AdminSearchByStatusEnum> adminSearchByStatusEnum = EnumSet.allOf(AdminSearchByStatusEnum.class);
-        List<AdminSearchByStatusEnum> adminSearchByStatusList = new ArrayList<AdminSearchByStatusEnum>(
-                adminSearchByStatusEnum);
-        Map<String, String> adminSearchByStatusMap = adminSearchByStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return adminSearchByStatusMap;
-
-    }
-
-    public static Map<String, String> renewalStatusDropdown() {
-        EnumSet<AdminRenewalStatusEnum> adminRenewalStatusEnum = EnumSet.allOf(AdminRenewalStatusEnum.class);
-        List<AdminRenewalStatusEnum> adminRenewalStatusList = new ArrayList<AdminRenewalStatusEnum>(
-                adminRenewalStatusEnum);
-        Map<String, String> adminRenewalStatusMap = adminRenewalStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return adminRenewalStatusMap;
-
-    }
-    
-    public static Map<String, String> overdueProcessDropdown() {
-        EnumSet<OverdueProcessDropdownEnum> overdueProcessEnum = EnumSet.allOf(OverdueProcessDropdownEnum.class);
-        List<OverdueProcessDropdownEnum> overdueProcessList = new ArrayList<OverdueProcessDropdownEnum>(
-                overdueProcessEnum);
-        Map<String, String> overdueProcessMap = overdueProcessList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return overdueProcessMap;
-
-    }
-    
-    public static Map<String, String> dueDateProcessDropdown() {
-        EnumSet<OverdueProcessDropdownEnum> overdueProcessEnum = EnumSet.allOf(OverdueProcessDropdownEnum.class);
-        List<OverdueProcessDropdownEnum> overdueProcessList = new ArrayList<OverdueProcessDropdownEnum>(
-                overdueProcessEnum);
-        Map<String, String> overdueProcessMap = overdueProcessList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return overdueProcessMap;
-
-    }
-
-    public static Map<String, String> contentTypeDropdown(ProfileInfo profileInfo) {
-        EnumSet<ContentTypeEnum> contenTypeEnum = EnumSet.allOf(ContentTypeEnum.class);
-        List<ContentTypeEnum> contentTypeList = new ArrayList<ContentTypeEnum>(contenTypeEnum);
-        Map<String, String> contentTypeMap = contentTypeList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        contentTypeMap.remove(ContentTypeEnum.PAPER_ADDITIONAL_BRANCH_INFORMATION.getCode());
-        contentTypeMap.remove(ContentTypeEnum.PAPER_FORM14345.getCode());
-
-        if (!profileInfo.isQDD()) {
-            contentTypeMap.remove(ContentTypeEnum.QDD_TRANSACTIONS.getCode());
-            contentTypeMap.remove(ContentTypeEnum.DESCRIPTION_OF_WHY_APPLICANT_IS_ELIGIBLE_ENTITY.getCode());
-        }
-        if (profileInfo.getEntityStatus().equalsIgnoreCase("AP")) {
-            contentTypeMap.remove(ContentTypeEnum.FORM_SS_4.getCode());
-        }
-
-        return contentTypeMap;
-
-    }
-
-    public static Map<String, String> contentTypeDropdown() {
-        EnumSet<ContentTypeEnum> contenTypeEnum = EnumSet.allOf(ContentTypeEnum.class);
-        List<ContentTypeEnum> contentTypeList = new ArrayList<ContentTypeEnum>(contenTypeEnum);
-        Map<String, String> contentTypeMap = contentTypeList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return contentTypeMap;
-
-    }
-
-    public static Map<String, String> qddQslDropdown() {
-        EnumSet<QslQddDropDownEnum> qslQddEnum = EnumSet.allOf(QslQddDropDownEnum.class);
-        List<QslQddDropDownEnum> qslQddList = new ArrayList<QslQddDropDownEnum>(qslQddEnum);
-        Map<String, String> qslQddMap = qslQddList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return qslQddMap;
-    }
-
-    public static Map<String, String> legalNameChangeDropdown() {
-        EnumSet<LegalNameChangeTypeEnum> legalNameChangeEnum = EnumSet.allOf(LegalNameChangeTypeEnum.class);
-        List<LegalNameChangeTypeEnum> legalNameChangeList = new ArrayList<LegalNameChangeTypeEnum>(legalNameChangeEnum);
-        Map<String, String> legalNameChangeMap = legalNameChangeList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return legalNameChangeMap;
-    }
-
-    public static Map<String, String> ch4EligibilityDropdown() {
-        EnumSet<Chapter4EligibilityEnum> ch4EligEnum = EnumSet.allOf(Chapter4EligibilityEnum.class);
-        List<Chapter4EligibilityEnum> ch4EligList = new ArrayList<Chapter4EligibilityEnum>(ch4EligEnum);
-        Map<String, String> ch4EligMap = ch4EligList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return ch4EligMap;
-    }
-
-    public static Map<String, String> ch3EligibilityDropdown() {
-        EnumSet<Chapter3EligibilityEnum> ch3EligEnum = EnumSet.allOf(Chapter3EligibilityEnum.class);
-        List<Chapter3EligibilityEnum> ch3EligList = new ArrayList<Chapter3EligibilityEnum>(ch3EligEnum);
-        Map<String, String> ch3EligMap = ch3EligList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return ch3EligMap;
-    }
-
-    public static Map<String, String> countryOfOrgDropdown(Map<String, String> countryList) {
-        // Remove U.S. territories and minor outlying islands from list
-        countryList.remove("AS"); // American Samoa
-        countryList.remove("GU"); // Guam
-        countryList.remove("MP"); // Northern Mariana Islands
-        countryList.remove("PR"); // Puerto Rico
-        countryList.remove("VI"); // U.S. Virgin Islands
-        countryList.remove("UM"); // U.S. Minor Outlying Islands
-        return countryList;
-    }
-
-    public static Map<String, String> countryOfAddressDropdown(Map<String, String> countryList) {
-        // Remove U.S. territories from list
-        countryList.remove("AS"); // American Samoa
-        countryList.remove("GU"); // Guam
-        countryList.remove("MP"); // Northern Mariana Islands
-        countryList.remove("PR"); // Puerto Rico
-        countryList.remove("VI"); // U.S. Virgin Islands
-        return countryList;
-    }
-
-    public static Map<String, String> countryOfBranchDropdown(Map<String, String> countryList) {
-        // Remove U.S. from list
-        countryList.remove("US");
-        return countryList;
-    }
-    
-    public static Map<String, String> CertContentTypeDropdown(boolean isFormCCG, boolean needSamplePlan, boolean needAuthDoc) {
-        EnumSet<CertificationFileContentTypeEnum> certContenTypeEnum = EnumSet.allOf(CertificationFileContentTypeEnum.class);
-        List<CertificationFileContentTypeEnum> certContentTypeList = new ArrayList<CertificationFileContentTypeEnum>(certContenTypeEnum);
-        
-        //For sorting requirement for Dropdown List
-        certContentTypeList.sort(new Comparator<CertificationFileContentTypeEnum>() {
-            @Override
-            public int compare(CertificationFileContentTypeEnum o1, CertificationFileContentTypeEnum o2) {
-                return ((Integer)o1.getOrder()).compareTo((Integer)o2.getOrder());
-            }
-        });
-        
-        Map<String, String> certContentTypeMap = certContentTypeList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        if (!isFormCCG) {
-            certContentTypeMap.remove(CertificationFileContentTypeEnum.APPLICATION_FORM_CCG.getCode());
-        }
-        if (!needSamplePlan) {
-            certContentTypeMap.remove(CertificationFileContentTypeEnum.PROPOSED_SAMPLE_PLAN.getCode());
-        }
-        if (!needAuthDoc) {
-            certContentTypeMap.remove(CertificationFileContentTypeEnum.AUTHORIZATION_DOCUMENT.getCode());
-        }
-        
-        return certContentTypeMap;
-
-    }
-    
-    /**
-     * create dropdown map for certification service
-     * @return
-     */
-    public static Map<String, String> certificationStatusDropdown() {
-        Map<String, String> certStatusDropdownMap = createCertificationStatusMap();
-        certStatusDropdownMap.remove(CertificationStatusEnum.SYSTEM_CREATED.getCode());
-        return certStatusDropdownMap;
-    }
-
-    /**
-     * @return
-     */
-    private static Map<String, String> createCertificationStatusMap() {
-        EnumSet<CertificationStatusEnum> certStatusEnums = EnumSet.allOf(CertificationStatusEnum.class);
-        List<CertificationStatusEnum> certStatusList = new ArrayList<CertificationStatusEnum>(certStatusEnums);
-        Map<String, String> certStatusDropdownMap = certStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(),  s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-        return certStatusDropdownMap;
-    }
-    
-    public static Map<String, String> certStatusOverrideDropdown(CertificationEntitySummary entitySummary) {
-        Map<String, String> certStatusDropdownMap = createCertificationStatusMap();
-        
-        certStatusDropdownMap.remove(CertificationStatusEnum.SYSTEM_CREATED.getCode());
-        
-        // remove submitted option if critical fields are missing
-        boolean noType = StringUtils.isEmpty(entitySummary.getEntityType());
-        boolean noName =  StringUtils.isEmpty(entitySummary.getEntityLegalName());
-        boolean noCountry =  StringUtils.isEmpty(entitySummary.getEntityCountry());
-        boolean noKyc = !entitySummary.getHasKycRule();
-        
-        if (noType || noName || noCountry || noKyc) {
-            certStatusDropdownMap.remove(CertificationStatusEnum.SUBMITTED.getCode());
-        }
-        
-        return certStatusDropdownMap;
-        
-    }
-    
-    /**
-     * create dropdown map for cccg service
-     * @return
-     */
-    public static Map<String, String> ccgStatusDropdown() {
-        Map<String, String> ccgStatusDropdownMap = createCCGStatusMap();
-        ccgStatusDropdownMap.remove(CertificationStatusEnum.INITIATED.getCode());
-        return ccgStatusDropdownMap;
-    }
-    
-    /**
-     * @return
-     */
-    private static Map<String, String> createCCGStatusMap() {
-        EnumSet<CCGRequestStatusEnum> ccgStatusEnums = EnumSet.allOf(CCGRequestStatusEnum.class);
-        List<CCGRequestStatusEnum> ccgStatusList = new ArrayList<CCGRequestStatusEnum>(ccgStatusEnums);
-        Map<String, String> ccgStatusDropdownMap = ccgStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(),  s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-        return ccgStatusDropdownMap;
-    }
-    
-    public static Map<String, String> certStatusChangeReasonDropDown() {
-        EnumSet<CertStatusChangeReasonEnum> changeReasonEnums = EnumSet.allOf(CertStatusChangeReasonEnum.class);
-        List<CertStatusChangeReasonEnum> changeReasonsList = new ArrayList<CertStatusChangeReasonEnum>(changeReasonEnums);
-        
-        // Sort alphabetically by enum text
-        changeReasonsList.sort(new Comparator<CertStatusChangeReasonEnum>() {
-            @Override
-            public int compare(CertStatusChangeReasonEnum o1, CertStatusChangeReasonEnum o2) {
-                return o1.getText().compareTo(o2.getText());
-            }
-        });
-        
-        Map<String, String> changeReasonsDropdownMap = changeReasonsList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-        
-        // Remove additional statuses not available in dropdown
-        changeReasonsDropdownMap.remove(CertStatusChangeReasonEnum.ENTITY_INITIATED.getCode());
-        changeReasonsDropdownMap.remove(CertStatusChangeReasonEnum.CCG_ENTITY_INITIATED.getCode());
-        changeReasonsDropdownMap.remove(CertStatusChangeReasonEnum.SUBMITTED.getCode());
-        changeReasonsDropdownMap.remove(CertStatusChangeReasonEnum.CERTIFICATION_EDITED.getCode());
-        
-        // Remove other from sorted Map and add it to the end per requirements
-        changeReasonsDropdownMap.remove(CertStatusChangeReasonEnum.OTHER.getCode());
-        changeReasonsDropdownMap.put(CertStatusChangeReasonEnum.OTHER.getCode(), CertStatusChangeReasonEnum.OTHER.getText());
-             
-        
-        return changeReasonsDropdownMap;
-    }
-    
-    public static Map<String, String> CCgStatusOverrideDropdown() {
-    	
-        EnumSet<CCGRequestStatusEnum> CCGStatusEnums = EnumSet.allOf(CCGRequestStatusEnum.class);
-        List<CCGRequestStatusEnum> CCGStatusList = new ArrayList<CCGRequestStatusEnum>(CCGStatusEnums);
-        
-        Map<String, String> CCGStatusDropdownMap = CCGStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(),  s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-        
-        CCGStatusDropdownMap.remove(CCGRequestStatusEnum.INITIATED.getCode()); 
-        
-        return CCGStatusDropdownMap;
-        
-    }
-    
-    public static Map<String, String> ReviewYearsDropdown(int startYear){
-        
-        Map<String, String> ReviewYearDropDownMap = new LinkedHashMap<String, String>();
-        
-        int currentYear = Year.now().getValue();
-        
-        for(int yearIterator = startYear; yearIterator < currentYear; ++yearIterator){
-            ReviewYearDropDownMap.put(String.valueOf(yearIterator), String.valueOf(yearIterator));
-        }
-        
-        return ReviewYearDropDownMap;
-    }
-    
-    public static Map<String, String> dueYearsDropdown(int startYear){
-    	
-    	Map<String, String> dueYearDropDownMap = new LinkedHashMap<String, String>();
-    	
-    	int currentYear = Year.now().getValue();
-    	
-    	for(int yearIterator = startYear; yearIterator <= currentYear; ++yearIterator){
-    		dueYearDropDownMap.put(String.valueOf(yearIterator), String.valueOf(yearIterator));
-    	}
-    	
-    	return dueYearDropDownMap;
-    }
-    
-    public static Map<String, String> ccgStatusFilterDropdown() {
-        EnumSet<CCGStatusFilterEnum> ccgStatusEnum = EnumSet.allOf(CCGStatusFilterEnum.class);
-        List<CCGStatusFilterEnum> ccgStatusList = new ArrayList<CCGStatusFilterEnum>(ccgStatusEnum);
-        Map<String, String> ccgStatusMap = ccgStatusList.stream()
-                .collect(Collectors.toMap(s -> s.getCode(), s -> s.getText(), (u, v) -> u, LinkedHashMap::new));
-
-        return ccgStatusMap;
-    }
-    
 }
-
-
-
