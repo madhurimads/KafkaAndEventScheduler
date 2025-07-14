@@ -1,17 +1,2 @@
-public boolean validateSqlInjection(String input) {
-
-        boolean isValidString = true;
-
-        input = input.replaceAll("\\s+", "");
-
-        String[] splitInput = splitStringEvery(input, MAX_STRING_SPLIT_LENGTH);
-
-        for (String splitInputItem : splitInput) {
-            Matcher filenameMatcher = sqlInjectionPattern.matcher(splitInputItem);
-            if (filenameMatcher.find())
-                isValidString = false;
-        }
-
-        return isValidString;
-
-    }
+public static final String SQL_INJECTION_PATTERN = "['\"]\\s*((Insert)|(Union)|(Select)|(Delete)|(Distinct)|(Having)|(Truncate)|(Replace)|(Handler)|(Like)|(Procedure)|(Limit)|(Drop)|(Dual)|(Create)|(Alter)|(;)|(\"))";
+    
