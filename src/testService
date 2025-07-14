@@ -1,2 +1,134 @@
-public static final String SQL_INJECTION_PATTERN = "['\"]\\s*((Insert)|(Union)|(Select)|(Delete)|(Distinct)|(Having)|(Truncate)|(Replace)|(Handler)|(Like)|(Procedure)|(Limit)|(Drop)|(Dual)|(Create)|(Alter)|(;)|(\"))";
-    
+package gov.irs.fatca.qi.strategy.util;
+
+import java.io.UnsupportedEncodingException;
+import java.security.AlgorithmParameters;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.InvalidParameterSpecException;
+import java.security.spec.KeySpec;
+import java.util.Base64;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+/**
+ * @author sean.hallahan
+ *
+ */
+public class EncryptionDecryptionUtil {
+
+    private final static int IV_LENGTH = 16;
+    private Cipher cipher = null;
+    private SecretKeySpec secretKeySpec = null;
+    private Log log;
+
+    public EncryptionDecryptionUtil(String key, String salt) {
+        this(key.toCharArray(), salt);
+    }
+
+    public EncryptionDecryptionUtil(char[] key, String salt) {
+        try {
+            intializeUtil(key, salt);
+        } catch (Exception e) {
+        	log.error("Unable to encrypt data", e);
+        }
+    }
+
+    private void intializeUtil(char[] key, String salt) {
+        Log log = LogFactory.getLog(EncryptionDecryptionUtil.class);
+        SecretKeyFactory factory = null;
+        SecretKeySpec secretKeySpec = null;
+        Cipher cipher = null;
+        try {
+            byte[] saltBytes = salt.getBytes();
+            factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1");
+            KeySpec keySpec = new PBEKeySpec(key, saltBytes, 65536, 128);
+            SecretKey secretKey = factory.generateSecret(keySpec);
+            secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), "AES");
+            cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        } catch (InvalidKeySpecException | NoSuchAlgorithmException |  NoSuchPaddingException e) {
+        	log.error("Unable to encrypt data", e);
+        }
+
+        this.cipher = cipher;
+        this.secretKeySpec = secretKeySpec;
+        this.log = log;
+    }
+
+    public String encrypt(String stringToEncrypt) {
+        try {
+
+            // Encrypt String
+            this.cipher.init(Cipher.ENCRYPT_MODE, this.secretKeySpec);
+            final byte[] encryptedString = this.cipher.doFinal(stringToEncrypt.getBytes("UTF-8"));
+
+            // Apply padding to encrypted string
+            AlgorithmParameters params = this.cipher.getParameters();
+            final byte[] iv = params.getParameterSpec(IvParameterSpec.class)
+                                    .getIV();
+            final byte[] cipherTxt = new byte[encryptedString.length + iv.length];
+            System.arraycopy(iv, 0, cipherTxt, 0, iv.length);
+            System.arraycopy(encryptedString, 0, cipherTxt, iv.length, encryptedString.length);
+
+            // Base64 encode result
+            return Base64.getEncoder()
+                         .encodeToString(cipherTxt);
+
+        } catch (InvalidKeyException e) {
+            log.error("Unable to encrypt data", e);
+        } catch (IllegalBlockSizeException e) {
+            log.error("Unable to encrypt data", e);
+        } catch (BadPaddingException e) {
+            log.error("Unable to encrypt data", e);
+        } catch (UnsupportedEncodingException e) {
+            log.error("Unable to encrypt data", e);
+        } catch (InvalidParameterSpecException e) {
+            log.error("Unable to encrypt data", e);
+        }
+        return null;
+    }
+
+    public String decrypt(String encryptedInput) {
+        try {
+            final byte[] cipherTxt = Base64.getDecoder()
+                                           .decode(encryptedInput);
+
+            // Extract IV from cipher text
+            final byte[] iv = new byte[IV_LENGTH];
+            System.arraycopy(cipherTxt, 0, iv, 0, iv.length);
+
+            // Extract Encrypted String
+            final byte[] encryptedString = new byte[cipherTxt.length - IV_LENGTH];
+            System.arraycopy(cipherTxt, IV_LENGTH, encryptedString, 0, encryptedString.length);
+
+            // Decrypt String
+            this.cipher.init(Cipher.DECRYPT_MODE, this.secretKeySpec, new IvParameterSpec(iv));
+            final byte[] decryptedString = this.cipher.doFinal(encryptedString);
+            
+            return new String(decryptedString);
+
+        } catch (InvalidKeyException e) {
+            log.error("Unable to decrypt database password", e);
+        } catch (InvalidAlgorithmParameterException e) {
+            log.error("Unable to decrypt database password", e);
+        } catch (IllegalBlockSizeException e) {
+            log.error("Unable to decrypt database password", e);
+        } catch (BadPaddingException e) {
+            log.error("Unable to decrypt database password", e);
+        }
+        return null;
+    }
+
+}
