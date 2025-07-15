@@ -1,47 +1,26 @@
-import static org.junit.jupiter.api.Assertions.*;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-public class EncryptionDecryptionUtilTest {
-
-    private static final String SECRET_KEY = "mySecretPassword";
-    private static final String SALT = "12345678";  // Should match expected salt byte length
-    private EncryptionDecryptionUtil util;
-
-    @BeforeEach
-    public void setup() {
-        util = new EncryptionDecryptionUtil(SECRET_KEY, SALT);
-    }
-
-    @Test
-    public void testEncryptionDecryption_Success() {
-        String original = "SensitiveData123";
-        String encrypted = util.encrypt(original);
-
-        assertNotNull(encrypted, "Encrypted value should not be null");
-        assertNotEquals(original, encrypted, "Encrypted value should not match original");
-
-        String decrypted = util.decrypt(encrypted);
-
-        assertEquals(original, decrypted, "Decrypted value should match original");
-    }
-
-    @Test
-    public void testEncrypt_NullInput() {
-        String result = util.encrypt(null);
-        assertNull(result, "Encryption should return null for null input");
-    }
-
-    @Test
-    public void testDecrypt_InvalidBase64() {
-        String invalidInput = "NotBase64==";
-        String result = util.decrypt(invalidInput);
-        assertNull(result, "Decryption should fail for invalid Base64 input");
-    }
-
-    @Test
-    public void testDecrypt_EmptyString() {
-        String result = util.decrypt("");
-        assertNull(result, "Decryption should return null for empty string input");
-    }
-}
+ public boolean allElementsAnswered(List<String> elementNamesList, QuestionnairePage page, String elementType) {
+        String compareTo = null;
+        switch (elementType) {
+        case ElementTypes.CBX_CODE:
+            compareTo = CBX_NOT_CHECKED;
+            break;
+        default:
+            break;
+        }
+        for (String elementName : elementNamesList) {
+            Element element = page.getElement(elementName);
+            Optional<String> responseValue = Optional.ofNullable(element)
+                                                     .map(Element::getQuestionResponse)
+                                                     .map(QuestionResponse::getResponseValue);
+            if (responseValue.isPresent()) {
+                if (element.getQuestionResponse()
+                           .getResponseValue()
+                           .equalsIgnoreCase(compareTo)) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        return true;
+    };
