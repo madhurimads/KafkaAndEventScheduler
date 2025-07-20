@@ -1,0 +1,95 @@
+<%@include file="/WEB-INF/views/shared/header.jsp" %>
+<%@include file="/WEB-INF/views/shared/offerNav.jsp" %>
+<br>
+
+<html xmlns:th="http://www.thymeleaf.org">
+
+<body>
+<script>
+	pageTitle("Documents")
+</script>
+	
+<div>
+	<form:form id="uploadDocumentForm" method="post" enctype="multipart/form-data" action="../../ao/document/uploadOfferDocument">
+		<input type="hidden" name="_csrf" value="${_csrf.token}" />
+		<table>
+			<tr>
+				<td>Select File to upload:</td> <td><input type="file" id="uploadedFile" name="uploadedFile"/></td>
+			</tr>
+			<tr>	
+				<td>Notes:</td><td><input type="text" id="notes" name="notes" style="height: 20px; width: 300px;"/></td>
+			</tr>
+			<tr>
+				<td></td> <td></td> <td><input type="submit" value="Upload" disabled/></td>
+			</tr>
+		</table>
+		<h5>${message}</h5>
+	</form:form>
+	
+	<fieldset class="fldset">
+	<legend id="offerlegend" class="leftnav-heading">
+		<h4>Offer</h4>
+	</legend>
+	<div>
+		<table>
+			<tbody>
+                    <tr>
+                        <td width="10%"><span class="form-field-name">Offer Number: </span></td>
+	               		<td width="35%"><span class="form-field-value"><%= session.getAttribute("offerNum") %></span></td>                        
+                    </tr>
+            </tbody>
+		</table>
+	</div>
+	</fieldset>
+	
+	<fieldset class="fldset">
+	<legend id="docslegend" class="leftnav-heading">
+		<h4>Documents</h4>
+	</legend>
+	<div>
+		<table>
+			<tbody>
+				<c:choose>
+					<c:when test="${!empty offerDocumentList}">
+                	<c:forEach items="${offerDocumentList}" var="offerDocument">
+                    	<tr>
+                        	<td width="10%"><span class="form-field-name">File Name: </span></td>
+	               			<td width="60%"><span class="form-field-value">
+	               				<a href="<c:url value="../../ao/document/download/${offerDocument.ooDocumentId}" />">${offerDocument.fileName}</a>
+                        			</span>
+                        	</td>   
+                        	<td width="10%">
+                        		<form th:action="@{../../ao/document/delete?docId=${offerDocument.ooDocumentId}&docName=${offerDocument.fileName}}"  method="post">
+                        			<input type="submit" value="Delete"/>
+                        			<input type="hidden" name="_csrf" value="${_csrf.token}" />
+                        			
+                        		</form> 
+                        	</td>  
+                        	<td width="5%"><span class="form-field-name">Notes: </span></td>
+	               			<td width="15%"><span class="form-field-value">${offerDocument.notes}</span></td>   
+                    	</tr>
+                	</c:forEach>
+                	</c:when>
+                	<c:otherwise>
+                		<tr> <td> No documents available.</td></tr>
+                	</c:otherwise>
+                </c:choose>	
+                
+            </tbody>
+		</table>
+	</div>
+	</fieldset>
+	
+	 <!-- Disable the Upload button until a file is selected  -->
+	 <script>
+    	document.querySelector("input[type=file]").onchange = ({
+      	target: { value },}) => {
+      	document.querySelector("input[type=submit]").disabled = !value;};
+  </script>
+	
+</div>
+
+<%@include file="/WEB-INF/views/shared/footer.jsp" %>
+
+</body>
+</html>
