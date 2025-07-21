@@ -1,0 +1,232 @@
+package gov.irs.controller;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.ResponseEntity.BodyBuilder;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.DataBinder;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import gov.irs.common.utils.LoggingManager;
+import gov.irs.common.utils.breadcrumb.Link;
+import gov.irs.dto.OfferBO;
+import gov.irs.dto.OfferNum;
+import gov.irs.dto.payments.PaymentBO;
+import gov.irs.entities.OicOfrs;
+import gov.irs.entities.payments.OicPmt;
+import gov.irs.mapper.OfferEntityOfferBoMapper;
+import gov.irs.mapper.OicPmtMapper;
+import gov.irs.service.OfferService;
+import gov.irs.service.PaymentService;
+import gov.irs.validator.offer.SearchOfferValidator;
+import jakarta.servlet.http.HttpSession;
+import jakarta.validation.Valid;
+
+@RestController
+@RequestMapping("/ao/payment")
+public class PaymentController {
+	
+	protected LoggingManager log = new LoggingManager(this.getClass());
+	
+	@Autowired
+	private PaymentService paymentService;
+	
+	@Autowired
+	private OfferService offerService;
+	
+	@Autowired
+	private OicPmtMapper oicPmtMapper;
+	
+	@Autowired
+	private OfferEntityOfferBoMapper offerEntityOfferBoMapper;
+	
+	@Autowired 
+	private SearchOfferValidator searchOfferValidator;
+	
+	private HttpHeaders responseHeaders = new HttpHeaders();
+	
+	@GetMapping({"/paymentByOfferNum", "/paymentByOfferNum/"})
+	public ResponseEntity<?> getPaymentByOfferNum(
+			@RequestParam("offerNum") Integer offerNum){
+		
+		responseHeaders.setContentType(MediaType.APPLICATION_JSON);
+		ModelAndView mav = new ModelAndView("offer/showPaymentBody");
+		Optional<OicPmt> payment = paymentService.getPaymentsForOfferNum(offerNum);
+		PaymentBO paymentBO = null;
+		if(!payment.isEmpty()) {
+			paymentBO = oicPmtMapper.entityToBo(payment.get());
+
+			return ResponseEntity.ok()
+					.headers(responseHeaders)
+					.body(paymentBO);
+		} else {
+			return ((BodyBuilder) ResponseEntity.notFound()
+					.headers(responseHeaders))
+					.body("No Payment Records found for offerNum:" + offerNum);
+		}	
+	}
+	
+	private boolean getValidationErrors(DataBinder dataBinder, List<String> errors) {
+		BindingResult bindingResult = dataBinder.getBindingResult();
+		if (bindingResult.hasErrors()) {
+			log.warn("getValidationErrors bindingResult: " + bindingResult.getAllErrors());
+			for (Object object : bindingResult.getAllErrors()) {
+			    if(object instanceof FieldError) {
+			        FieldError fieldError = (FieldError) object;
+			        log.info("fieldError: " + fieldError.getDefaultMessage());
+			        errors.add(fieldError.getDefaultMessage());
+			    }
+			}
+			return true;
+	    }
+		return false;
+	}
+	
+	private String stackTraceToString(Throwable e) {
+	    StringBuilder sb = new StringBuilder();
+	    for (StackTraceElement element : e.getStackTrace()) {
+	        sb.append(element.toString());
+	        sb.append("\n");
+	    }
+	    return sb.toString();
+	}
+	
+	@Link(label="Payment", family="aoic", parent="AO Menu")
+	@GetMapping("/showPaymentBody")
+	public ModelAndView showPayment(
+			Model model, HttpSession session, RedirectAttributes redirectAttributes) {
+		
+		Integer offerNum = Integer.valueOf(session.getAttribute("offerNum").toString());
+		
+		List<String> errors = new ArrayList<String>();
+		List<String> warnings = new ArrayList<String>();
+		ModelAndView mav = new ModelAndView("payment/showPaymentBody");
+			
+		
+	 	DataBinder dataBinder = new DataBinder(new OfferNum(offerNum));
+	    dataBinder.setValidator(searchOfferValidator);
+	    dataBinder.validate();
+
+	    if (!getValidationErrors(dataBinder, errors)) {
+	    	try {
+	    		log.info("show Payment for offerNum :" + offerNum);
+	    		Optional<OicPmt> payment = paymentService.getPaymentsForOfferNum(offerNum);
+	    		if (payment != null) {
+	    			log.info("showPaymentBody return: " + payment.toString());
+	    			PaymentBO paymentBO = oicPmtMapper.entityToBo(payment.get());
+	    			
+	    			Optional<OicOfrs> offerOptional = Optional.ofNullable(offerService.searchOffer(offerNum));
+	    			OfferBO offerBO = offerEntityOfferBoMapper.OicOfrsToOfferBO(offerOptional.get());
+	    		
+	    			mav.addObject("payment", paymentBO);
+	    			mav.addObject("offer", offerBO);
+	    		} else {
+	    			warnings.add("No records found");
+	    		}
+
+	    	} catch (Exception ex) {
+	    		log.error("showPaymentBody Exception: " +  ex);
+	    		errors.add("Exception: " + ex);
+	    		errors.add("Exception trace:" + stackTraceToString(ex));
+	    	}
+	    }
+		
+	    return mav;
+	}
+	
+	@GetMapping("/paymentByScCd")
+	public ResponseEntity<?> selectPaymentRefundApplyListing(
+			@RequestParam("scCd") Short scCd) {
+		responseHeaders.setContentType(MediaType.APPLICATION_JSON);
+		
+		Optional<List<OicPmt>> paymentList = paymentService.selectPaymentRefundApplyListing(scCd);
+		
+		if(paymentList.isEmpty()) {
+			return ((BodyBuilder) ResponseEntity.notFound()
+					.headers(responseHeaders))
+					.body("No Payment Records found for scCd:" + scCd);
+		}
+		List<PaymentBO> paymentBOList = paymentList.get().stream()
+				.map(oicPmtMapper::entityToBo)
+				.collect(Collectors.toList());
+		
+		return ResponseEntity.ok()
+				.headers(responseHeaders)
+				.body(paymentBOList);
+	
+	}
+	
+	
+	@GetMapping("/paymentByOfferTin")
+	public ResponseEntity<?> getPaymentByOfferTin(
+			@RequestParam("offerTin") String offerTin){
+		
+		responseHeaders.setContentType(MediaType.APPLICATION_JSON);
+		
+		Optional<List<OicPmt>> paymentList = paymentService.getPaymentsForOfferTin(offerTin);
+		
+		if(paymentList.isEmpty()) {
+			return ((BodyBuilder) ResponseEntity.notFound()
+					.headers(responseHeaders))
+					.body("No Payment Records found for offerTin:" + offerTin);
+		}
+		List<PaymentBO> paymentBOList = paymentList.get().stream()
+				.map(oicPmtMapper::entityToBo)
+				.collect(Collectors.toList());
+		
+		return ResponseEntity.ok()
+				.headers(responseHeaders)
+				.body(paymentBOList);
+				
+	}
+	
+	@PostMapping
+	public ResponseEntity<PaymentBO> createPayment(@Valid @RequestBody PaymentBO paymentBO) {
+		
+		responseHeaders.setContentType(MediaType.APPLICATION_JSON);
+		
+		PaymentBO newBO = paymentService.createPayment(paymentBO);
+		
+		return ResponseEntity.ok()
+			.headers(responseHeaders)
+			.body(newBO);
+	}
+	
+	@PutMapping("/{offerNum}")
+	public ResponseEntity<?> updatePayment(
+			@PathVariable Integer offerNum,
+			@Valid @RequestBody PaymentBO paymentBO) {
+		
+		responseHeaders.setContentType(MediaType.APPLICATION_JSON);
+
+		PaymentBO newBO = paymentService.createPayment(paymentBO);
+		
+		if(newBO != null) {
+			return ResponseEntity.ok()
+			.headers(responseHeaders)
+			.body(newBO);
+		} else {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body("No payment record available to update.");
+		}
+	}
+}
