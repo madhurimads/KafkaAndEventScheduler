@@ -1,0 +1,159 @@
+spring.jpa.hibernate.ddl-auto=validate
+spring.h2.console.enabled=false
+spring.jpa.hibernate.naming.physical-strategy=org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+spring.jpa.hibernate.naming.implicit-strategy=org.hibernate.boot.model.naming.ImplicitNamingStrategyLegacyJpaImpl
+
+# This little guys is interesting.  This is the default but being explicit to make folks aware.
+server.error.whitelabel.enabled=false
+
+server.servlet-path=/*
+
+#logging.level.root=debug
+endpoints.enabled=false
+endpoints.mappings.enabled=true
+db.usage.enabled=true
+
+cron.reset.sequence=0 0 0 1 1 ?
+
+cron.evict.cache=*/60 * * * * *
+
+logging.config=classpath:log4j2.xml
+
+flyway.enabled=false
+
+confirmation.start=QI
+
+screening.admin=Screening Admin
+
+#snapshot-strategy
+snapshot.strategy.enabled=true
+
+saas.src.addr.header=X-Forwarded-For
+saas.system.string=FATCAQI
+saas.user.tax.period.format=yyyyMM
+saas.external.user.type.string=REGT
+saas.admin.user.type.string=IRSEE
+saas.external.user.event.type.string=USER
+saas.admin.user.event.type.string=ADMIN
+saas.seid.user.length=5
+saas.default.tin.string=000000000
+saas.user.id.max.length=10
+saas.success.return.code=00
+saas.failure.return.code=01
+saas.default.src.address=0.0.0.0
+saas.event.id.entity.disassociation=FQIENTDISASSOC
+saas.event.id.entity.cert.submit=FATCA_QI_CERT_SUBMIT
+saas.event.id.cert.override=FATCA_QI_CERT_OVR
+saas.event.id.cert.appr=FATCA_QI_CERT_APPR
+saas.event.id.cert.reject=FATCA_QI_CERT_REJECT
+saas.event.id.ccgcompentity.submit=FATCA_QI_CCG_BECOME
+saas.event.id.ccgcompentity.update=FATCA_QI_CCG_MODIFY
+saas.event.id.ccgcompentity.terminate=FATCA_QI_CCG_TERMN
+saas.event.id.ccgcompentity.approve=FATCA_QI_CCG_APPR
+saas.event.id.ccgcompentity.reject=FATCA_QI_CCG_REJECT
+saas.event.id.cert.extendduedate=FATCA_QI_CERT_EXT
+
+search.limit.count=500
+
+#disable/enable individual service
+#dal.ws.enabled=true -- should be removed?
+saas.service.enabled=true
+get.profile.service.enabled=true
+submit.form.service.enabled=true
+get.form.service.enabled=true
+get.message.service.enabled=true
+get.submission.history.service.enabled=true
+update.message.service.enabled=true
+update.submission.status.service.enabled=true
+update.entity.status.service.enabled=true
+upload.file.service.enabled=true
+download.file.service.enabled=true
+get.dropdown.list.service.enabled=true
+delete.branch.service.enabled=true
+delete.pai.service.enabled=true
+delete.file.service.enabled=true
+check.user.existence.service.enabled=true
+create.new.entity.account.service.enabled=true
+save.fireg.data.service.enabled=true
+submission.queue.service.enabled=true
+get.contact.info.service.enabled=true
+update.contact.info.service.enabled=true
+update.submission.info.service.enabled=true
+update.entity.submission.info.service.enabled=true
+check.user.login.service.enabled=true
+mark.user.logout.service.enabled=true
+get.admin.entity.info.service.enabled=true
+admin.search.service.enabled=true
+termination.service.enabled=true
+get.submission.stage.service.enabled=true
+release.login.locks.service.enabled=true
+get.login.indicator.service.enabled=true
+get.branch.info.service.enabled = true
+update.branch.info.service.enabled = true
+manage.ein.service.enabled=true
+admin.update.entity.service.enabled=true
+aop.after.log.enabled=false
+
+#Query to keep database connection alive
+
+#JNDI datasource
+enable.jndi.ds=true
+qi.ofac.jndi.ds=java:jboss/fatcaQIAppDS
+qi.doc.jndi.ds=java:jboss/fatcaQIAppDocDS
+qi.app.jndi.ds=java:jboss/fatcaQIAppDS
+
+#Used by the application
+spring.datasource.hikari.driver-class-name=oracle.jdbc.driver.OracleDriver
+spring.jpa.generate-ddl=false
+spring.jpa.properties.hibernate.current_session_context_class=org.springframework.orm.hibernate5.SpringSessionContext
+spring.jpa.show-sql= true
+spring.jpa.properties.org.hibernate.flushMode=COMMIT
+
+spring.datasource.testWhileIdle=true
+spring.datasource.validationQuery=SELECT 1 from dual;
+
+#doc schema
+doc.datasource.hikari.driver-class-name=oracle.jdbc.driver.OracleDriver
+
+doc.datasource.testWhileIdle=true
+doc.datasource.validationQuery=SELECT 1 from dual;
+
+#OFAC schema
+ofac.datasource.hikari.driver-class-name=oracle.jdbc.driver.OracleDriver
+
+ofac.datasource.testWhileIdle=true
+ofac.datasource.validationQuery=SELECT 1 from dual;
+
+spring.jpa.database-platform=org.hibernate.dialect.OracleDialect
+
+#Email notification
+spring.mail.host=mail-relay.enterprise.irs.gov
+spring.mail.port=25
+#Turn on if smtp server has SSL and use username and password
+spring.mail.properties.mail.smtp.ssl.enable=false
+#spring.mail.username=
+#spring.mail.password=
+
+email.enabled=true
+email.from=FATCA-QI-donot-reply@irs.gov
+email.subject=Your QI, WP or WT account update
+email.text=You have a new message on your Qualified Intermediary (QI), Withholding Foreign Partnership (WP), Withholding Foreign Trust (WT) System message board. You must log into your QI, WP or WT account for   to read the message.
+email.text.beginning=You have a new message on your Qualified Intermediary (QI), Withholding Foreign Partnership (WP), Withholding Foreign Trust (WT) System message board. You must log into your QI, WP or WT account for
+email.text.end=to read the message.
+
+#DAL validation error messages
+non.exist.entity.error=Entity ID does not exist in the system
+non.exist.ein.error=EIN does not exist in the system
+invalid.entity.ein.combination.error=Invalid Entity ID/EIN combination
+ccg.entity.type.mismatch.error=The entity cannot be added because it must be the same type as the compliance entity of the CCG
+add.active.member.to.ccg.error=The entity cannot be added because it is already a member of a CCG
+invalid.entity.status.error=Invalid entity status of entity being added - Must be "Approved," "Terminated - Voluntary," or "Terminated - by IRS"
+invalid.cert.status.error=The entity cannot be added because it has already submitted a certification for the corresponding certification period
+invalid.ccg.cert.status.error=The entity cannot be added because the CCG has a certification in accepted, submitted, or amended status.
+approve.active.member.ccg.request.error=The compliance request cannot be approved because the entity is already a member of a CCG
+invalid.entity.status.for.ccg.request.approval.error=The compliance request cannot be approved because the entity's entity status must be "Approved," "Terminated - Voluntary," or "Terminated - by IRS"
+invalid.cert.status.for.ccg.request.approval.error=The compliance request cannot be approved because the entity is included in a submitted certification for the corresponding certification period
+
+#Minimum Date to receive an Extended Due Date
+extended.due.date.cutoff=05/03/
+spring.main.allow-circular-references=true
