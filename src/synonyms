@@ -1,0 +1,77 @@
+If you're using Oracle with Hibernate (including Hibernate 6.6.5) and Oracle synonyms aren't being picked up, it's a common and known issue. Hibernate (and many other ORMs) struggle with resolving Oracle synonyms because they’re not part of the default metadata unless specific configurations are made.
+
+Here's a detailed breakdown of why this happens and how to work around it effectively:
+
+🚫 Why Hibernate Doesn't Pick Up Synonyms
+Hibernate relies on JDBC metadata or explicit schema configuration to resolve table names. Oracle synonyms are not visible through standard JDBC metadata unless:
+
+You don’t specify a schema (i.e., let the DB resolve it),
+
+Or you explicitly alter the session schema.
+
+✅ Solutions That Work
+1. Do not use schema in @Table
+If you use this:
+
+java
+Copy
+Edit
+@Table(name = "MY_TABLE", schema = "MY_SCHEMA") // ❌ Avoid this
+Hibernate will bypass Oracle's synonym resolution.
+
+Instead, use:
+
+java
+Copy
+Edit
+@Table(name = "MY_TABLE") // ✅ Let Oracle resolve via synonym
+2. Use CURRENT_SCHEMA to control synonym resolution
+In your JDBC config, set the session’s schema to the one owning the actual tables:
+
+properties
+Copy
+Edit
+spring.datasource.hikari.connection-init-sql=ALTER SESSION SET CURRENT_SCHEMA=ACTUAL_SCHEMA
+This allows Hibernate to see the synonym as if it's the real table.
+
+3. Make sure the user has access to synonyms
+Grant access to the app user:
+
+sql
+Copy
+Edit
+GRANT SELECT, INSERT, UPDATE, DELETE ON ACTUAL_SCHEMA.MY_TABLE TO APP_USER;
+CREATE SYNONYM APP_USER.MY_TABLE FOR ACTUAL_SCHEMA.MY_TABLE;
+4. Disable Hibernate schema validation
+Since synonyms are not introspectable:
+
+properties
+Copy
+Edit
+spring.jpa.hibernate.ddl-auto=none
+Or disable just validation logic manually if you use Spring Boot.
+
+5. (Optional) Use native queries if entity mapping is too complex
+Synonyms always work fine with native SQL queries:
+
+java
+Copy
+Edit
+@Query(value = "SELECT * FROM MY_TABLE WHERE STATUS = :status", nativeQuery = true)
+List<MyEntity> findByStatus(@Param("status") String status);
+🚧 Hibernate 6+ Notes
+In Hibernate 6, the introspection is stricter. So even with correct synonyms, it might still fail ddl-auto=validate.
+
+There’s no out-of-the-box fix unless Oracle synonyms are made introspectable via:
+
+Custom PhysicalNamingStrategy
+
+Using DatabaseMetaData overrides (rare and complex)
+
+✅ Recommended Setup Summary
+Step	Value/Setting
+Entity annotation	@Table(name = "MY_TABLE") — no schema
+Synonym creation	CREATE SYNONYM MY_TABLE FOR actual_schema.MY_TABLE;
+JDBC init SQL	ALTER SESSION SET CURRENT_SCHEMA=actual_schema
+ddl-auto config	none (or update for dev, but not with synonyms)
+Schema access permissions	Grant all necessary rights to the app user
