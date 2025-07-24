@@ -1,5 +1,4 @@
 import java.io.IOException;
-
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -8,9 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetailsByNameServiceWrapper;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -24,7 +23,6 @@ import gov.irs.fatca.qi.service.user.SiteMinderUserDetailsService;
 import gov.irs.fatca.qi.ui.security.SiteMinderRequestHeaderAuthenticationFilter;
 
 @Configuration
-@EnableWebSecurity
 public class SecurityConfig {
 
     @Value("${security.login.page}")
@@ -60,66 +58,65 @@ public class SecurityConfig {
     @Value("${server.session.timeout}")
     private String serverSessionTimeout;
 
-    private final UserDetailsService userDetailsService = new SiteMinderUserDetailsService();
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return new SiteMinderUserDetailsService();
+    }
 
     @Bean
-    public PreAuthenticatedAuthenticationProvider preAuthenticatedProvider() {
+    public PreAuthenticatedAuthenticationProvider preAuthProvider(UserDetailsService userDetailsService) {
+        UserDetailsByNameServiceWrapper<PreAuthenticatedAuthenticationToken> wrapper =
+            new UserDetailsByNameServiceWrapper<>(userDetailsService);
         PreAuthenticatedAuthenticationProvider provider = new PreAuthenticatedAuthenticationProvider();
-        provider.setPreAuthenticatedUserDetailsService(
-                new UserDetailsByNameServiceWrapper<>(userDetailsService));
+        provider.setPreAuthenticatedUserDetailsService(wrapper);
         return provider;
     }
 
-    @Bean
-    public AuthenticationManager authenticationManager() {
-        return new ProviderManager(preAuthenticatedProvider());
+    public class NoRedirectSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
+        @Override
+        public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
+                                            Authentication authentication) throws ServletException, IOException {
+            request.getSession().setMaxInactiveInterval(Integer.parseInt(serverSessionTimeout));
+        }
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, AuthenticationManager authManager,
+                                           PreAuthenticatedAuthenticationProvider preAuthProvider) throws Exception {
 
-        SiteMinderRequestHeaderAuthenticationFilter siteMinderFilter =
-                new SiteMinderRequestHeaderAuthenticationFilter();
+        SiteMinderRequestHeaderAuthenticationFilter siteMinderFilter = new SiteMinderRequestHeaderAuthenticationFilter();
         siteMinderFilter.setPrincipalRequestHeader(principalRequestHeader);
-        siteMinderFilter.setAuthenticationManager(authenticationManager());
+        siteMinderFilter.setAuthenticationManager(authManager);
 
         http
+            .authenticationProvider(preAuthProvider)
             .addFilter(siteMinderFilter)
+            .csrf(csrf -> csrf.disable())
+            .formLogin(form -> form.disable()) // Disable default login page
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED); // Return 401 instead of 302
+                })
+            )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/qi-newlogin", "/resources/**", "/content/**").permitAll()
                 .anyRequest().hasRole("USER")
-            )
-            .formLogin(login -> login
-                .loginPage(loginPage)
-                .loginProcessingUrl(loginProcessUrl)
-                .defaultSuccessUrl(defaultSuccessUrl, useDefaultSuccessUrl)
-                .failureUrl(authenticationFailureUrl)
-                .successHandler(new NoRedirectSavedRequestAwareAuthenticationSuccessHandler())
-                .permitAll()
             )
             .logout(logout -> logout
                 .logoutRequestMatcher(new AntPathRequestMatcher(logoutUrl))
                 .logoutSuccessUrl(piiLogoutUrl)
                 .invalidateHttpSession(invalidateHttpSession)
                 .deleteCookies(cookieNameToClear)
-                .permitAll()
             )
-            .sessionManagement(session -> session
+            .sessionManagement(sess -> sess
                 .sessionFixation().newSession()
-            )
-            .csrf().disable();
+            );
 
         return http.build();
     }
 
-    public class NoRedirectSavedRequestAwareAuthenticationSuccessHandler
-            extends SimpleUrlAuthenticationSuccessHandler {
-
-        @Override
-        public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
-                                            Authentication authentication) throws IOException, ServletException {
-            request.getSession().setMaxInactiveInterval(Integer.parseInt(serverSessionTimeout));
-            super.onAuthenticationSuccess(request, response, authentication);
-        }
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
     }
 }
