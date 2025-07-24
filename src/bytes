@@ -1,5 +1,3 @@
-package gov.irs.fatca.qi.main;
-
 import java.io.IOException;
 
 import javax.servlet.ServletException;
@@ -7,15 +5,16 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.builders.WebSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetailsByNameServiceWrapper;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationProvider;
 import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
@@ -24,19 +23,9 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import gov.irs.fatca.qi.service.user.SiteMinderUserDetailsService;
 import gov.irs.fatca.qi.ui.security.SiteMinderRequestHeaderAuthenticationFilter;
 
-/**
- * Spring Securities configurations for using SiteMinder pre-authentication.
- * 
- * @author li.c.liu
- *
- */
 @Configuration
 @EnableWebSecurity
-public class SecurityConfig extends WebSecurityConfigurerAdapter {
-
-    private UserDetailsService userDetailsService;
-
-    private PreAuthenticatedAuthenticationProvider preAuthenticatedProvider;
+public class SecurityConfig {
 
     @Value("${security.login.page}")
     private String loginPage;
@@ -52,7 +41,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Value("${security.authentication.failure.url}")
     private String authenticationFailureUrl;
-    
+
     @Value("${security.principal.request.header.sadi}")
     private String principalRequestHeader;
 
@@ -71,53 +60,66 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     @Value("${server.session.timeout}")
     private String serverSessionTimeout;
 
-    public SecurityConfig() {
-        super();
+    private final UserDetailsService userDetailsService = new SiteMinderUserDetailsService();
 
-        userDetailsService = new SiteMinderUserDetailsService();
-        UserDetailsByNameServiceWrapper<PreAuthenticatedAuthenticationToken> wrapper = new UserDetailsByNameServiceWrapper<PreAuthenticatedAuthenticationToken>(
-                userDetailsService);
-
-        preAuthenticatedProvider = new PreAuthenticatedAuthenticationProvider();
-        preAuthenticatedProvider.setPreAuthenticatedUserDetailsService(wrapper);
+    @Bean
+    public PreAuthenticatedAuthenticationProvider preAuthenticatedProvider() {
+        PreAuthenticatedAuthenticationProvider provider = new PreAuthenticatedAuthenticationProvider();
+        provider.setPreAuthenticatedUserDetailsService(
+                new UserDetailsByNameServiceWrapper<>(userDetailsService));
+        return provider;
     }
 
-    public class NoRedirectSavedRequestAwareAuthenticationSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
-
-        @Override
-        public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
-                Authentication authentication) throws ServletException, IOException {
-
-            request.getSession().setMaxInactiveInterval(Integer.parseInt(serverSessionTimeout));
-        }
+    @Bean
+    public AuthenticationManager authenticationManager() {
+        return new ProviderManager(preAuthenticatedProvider());
     }
 
-    @Override
-    protected void configure(AuthenticationManagerBuilder authenticationManagerBuilder) throws Exception {
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
-        authenticationManagerBuilder.authenticationProvider(preAuthenticatedProvider);
-    }
-
-    @Override
-    public void configure(WebSecurity webSecurity) throws Exception {
-        webSecurity.ignoring().antMatchers("/resources/**");
-    }
-
-    @Override
-    protected void configure(HttpSecurity httpSecurity) throws Exception {
-
-        SiteMinderRequestHeaderAuthenticationFilter siteMinderFilter = new SiteMinderRequestHeaderAuthenticationFilter();
+        SiteMinderRequestHeaderAuthenticationFilter siteMinderFilter =
+                new SiteMinderRequestHeaderAuthenticationFilter();
         siteMinderFilter.setPrincipalRequestHeader(principalRequestHeader);
         siteMinderFilter.setAuthenticationManager(authenticationManager());
 
-        httpSecurity.addFilter(siteMinderFilter).authorizeRequests()
-                .antMatchers("/qi-newlogin", "/resources/**", "/content/**").permitAll().antMatchers("/**")
-                .hasRole("USER").and().formLogin().loginPage(loginPage).loginProcessingUrl(loginProcessUrl)
-                .defaultSuccessUrl(defaultSuccessUrl, useDefaultSuccessUrl).failureUrl(authenticationFailureUrl)
-                .successHandler(new NoRedirectSavedRequestAwareAuthenticationSuccessHandler()).permitAll().and()
-                .logout().logoutRequestMatcher(new AntPathRequestMatcher(logoutUrl)).permitAll()
-                .logoutSuccessUrl(piiLogoutUrl).invalidateHttpSession(invalidateHttpSession)
-                .deleteCookies(cookieNameToClear).and().sessionManagement().sessionFixation().newSession();
+        http
+            .addFilter(siteMinderFilter)
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/qi-newlogin", "/resources/**", "/content/**").permitAll()
+                .anyRequest().hasRole("USER")
+            )
+            .formLogin(login -> login
+                .loginPage(loginPage)
+                .loginProcessingUrl(loginProcessUrl)
+                .defaultSuccessUrl(defaultSuccessUrl, useDefaultSuccessUrl)
+                .failureUrl(authenticationFailureUrl)
+                .successHandler(new NoRedirectSavedRequestAwareAuthenticationSuccessHandler())
+                .permitAll()
+            )
+            .logout(logout -> logout
+                .logoutRequestMatcher(new AntPathRequestMatcher(logoutUrl))
+                .logoutSuccessUrl(piiLogoutUrl)
+                .invalidateHttpSession(invalidateHttpSession)
+                .deleteCookies(cookieNameToClear)
+                .permitAll()
+            )
+            .sessionManagement(session -> session
+                .sessionFixation().newSession()
+            )
+            .csrf().disable();
 
+        return http.build();
+    }
+
+    public class NoRedirectSavedRequestAwareAuthenticationSuccessHandler
+            extends SimpleUrlAuthenticationSuccessHandler {
+
+        @Override
+        public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
+                                            Authentication authentication) throws IOException, ServletException {
+            request.getSession().setMaxInactiveInterval(Integer.parseInt(serverSessionTimeout));
+            super.onAuthenticationSuccess(request, response, authentication);
+        }
     }
 }
