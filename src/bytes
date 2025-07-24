@@ -1,84 +1,123 @@
-Êþº¾   7
-       java/lang/Object <init> ()V
-  	  
- 
-  (gov/irs/fatca/qi/strategy/util/UUIDUtils generate32UUID ()Ljava/lang/String;	       5gov/irs/fatca/qi/application/model/AccountInfoHistory accountInfoHistoryId Ljava/lang/String;
-       5gov/irs/fatca/qi/application/model/AccountInformation getAccountInformationId	     accountInformationId
-     
-getQiEntityId /()Lgov/irs/fatca/qi/application/model/QiEntity;
-   !  "   +gov/irs/fatca/qi/application/model/QiEntity	  $ %  
-qiEntityId
-  ' (  
-getFatcaId	  * +   fatcaId
-  - .   getGiin	  0 1  giin
-  3 4  getResidenceCountryId	  6 7  residenceCountryId
-  9 :  getOtherResidenceCountryTxt	  < =  otherResidenceCountryTxt
-  ? @  
-getLegalNm	  B C   legalNm
-  E F G getQslQddTypeCd 1()Lgov/irs/fatca/qi/application/model/QslQddType;
- I J  K F  -gov/irs/fatca/qi/application/model/QslQddType	  M N  qslQddTypeCd
-  P Q  getAssociatedEin	  S T  
-associatedEin
-  V W X getChapter4EligibilityTypeCd >()Lgov/irs/fatca/qi/application/model/Chapter4EligibilityType;
- Z [  \ W  :gov/irs/fatca/qi/application/model/Chapter4EligibilityType	  ^ _  chapter4EligibiiltyTypeCd
-  a b  getPreviousDefaultInd	  d e  prevDefaultInd
-  g h  getPreviousDefaultReasonDsc	  j k  prevDefaultRsnDsc
-  m n  getHasPaiInd	  p q  	hasPaiInd
-  s t u getHasBranchInd ()Ljava/lang/Integer;	  w x y hasBranchInd Ljava/lang/Integer;
-  { |  getQddBusinessDsc	  ~   qddBusinessDsc
-   ‚  getEligibleEntityDsc	  „ …  eligibleEntityDsc
-  ‡ ˆ u getLegalNameChangedInd	  Š ‹ y legalNameChgInd
-   Ž  getPriorLegalNm	   ‘  priorLegalNm
-  “ ” • getLegalNameChangeRsnTypeCd @()Lgov/irs/fatca/qi/application/model/LegalNameChangeReasonType;
- — ˜  ™ ”  <gov/irs/fatca/qi/application/model/LegalNameChangeReasonType	  › œ  legalNameChgRsnType
- ž Ÿ    ¡ ¢ java/time/LocalDateTime now ()Ljava/time/LocalDateTime;
- ¤ ¥  ¦ § ¨ java/sql/Timestamp  valueOf /(Ljava/time/LocalDateTime;)Ljava/sql/Timestamp;	  ª « ¬  startTs Ljava/sql/Timestamp;	  ® ¯ ¬ updateTs	  ± ²  
-updatedById	  ´ µ ¬ endTs RuntimeVisibleAnnotations Ljakarta/persistence/Id; Ljakarta/persistence/Column; name ACCOUNT_INFO_HISTORY_ID length     nullable     ACCOUNT_INFORMATION_ID    QI_ENTITY_ID FATCA_ID    GIIN    RESIDENCE_COUNTRY_ID columnDefinition NUMBER(22,0)    RESIDENCE_OTHER_COUNTRY_NM   K LEGAL_NM   – QSL_QDD_TYPE_CD    
-REGULAR_EIN   
- CHAPTER_4_ELIGIBILITY_TYPE_CD    PREVIOUS_DEFAULT_IND 
-NUMBER(1,0) PREVIOUS_DEFAULT_DSC  è 
-HAS_PAI_IND HAS_BRANCH_IND QDD_BUSINESS_DSC ELIGIBLE_ENTITY_DSC LEGAL_NAME_CHANGED_IND PREVIOUS_LEGAL_NM NAME_CHANGE_REASON_CD START_TS 	Timestamp END_TS 	UPDATE_TS 
-UPDATED_BY_ID   $ Code LineNumberTable LocalVariableTable this 7Lgov/irs/fatca/qi/application/model/AccountInfoHistory; L(Lgov/irs/fatca/qi/application/model/AccountInformation;Ljava/lang/String;)V 
-accountInfo 7Lgov/irs/fatca/qi/application/model/AccountInformation; updateId 
-StackMapTable  ð java/lang/String getAccountInfoHistoryId setAccountInfoHistoryId (Ljava/lang/String;)V setAccountInformationId 
-setQiEntityId 
-setFatcaId  setGiin setResidenceCountryId setOtherResidenceCountryTxt 
-setLegalNm setQslQddTypeCd setAssociatedEin getChapter4EligibiiltyTypeCd setChapter4EligibiiltyTypeCd getPrevDefaultInd setPrevDefaultInd getPrevDefaultRsnDsc setPrevDefaultRsnDsc setHasPaiInd setHasBranchInd (Ljava/lang/Integer;)V setQddBusinessDsc setEligibleEntityDsc getLegalNameChgInd setLegalNameChgInd setPriorLegalNm getLegalNameChgRsnType setLegalNameChgRsnType 
-getStartTs ()Ljava/sql/Timestamp; 
-setStartTs (Ljava/sql/Timestamp;)V getEndTs setEndTs 
-getUpdateTs 
-setUpdateTs getUpdatedById setUpdatedById 
-SourceFile AccountInfoHistory.java Ljakarta/persistence/Table; ACCOUNT_INFO_HISTORY Ljakarta/persistence/Entity; !          ¶     ·   ¸  ¹s º »I ¼ ½Z ¾     ¶     ¸  ¹s ¿ »I ¼ ½Z À  %   ¶     ¸  ¹s Á »I ¼ ½Z À  +   ¶     ¸  ¹s Â »I Ã ½Z À  1   ¶     ¸  ¹s Ä »I Å ½Z À  7   ¶     ¸  ¹s Æ Çs È »I É ½Z À  =   ¶     ¸  ¹s Ê »I Ë ½Z À  C   ¶     ¸  ¹s Ì »I Í ½Z À  N   ¶     ¸  ¹s Î »I Ï ½Z À  T   ¶     ¸  ¹s Ð »I Ñ ½Z À  _   ¶     ¸  ¹s Ò »I Ó ½Z À  e   ¶     ¸  ¹s Ô Çs Õ »I À ½Z À  k   ¶     ¸  ¹s Ö »I × ½Z À  q   ¶     ¸  ¹s Ø Çs Õ »I À ½Z À  x y  ¶     ¸  ¹s Ù »I À ½Z À     ¶     ¸  ¹s Ú »I × ½Z À  …   ¶     ¸  ¹s Û »I × ½Z À  ‹ y  ¶     ¸  ¹s Ü »I À ½Z À  ‘   ¶     ¸  ¹s Ý »I Í ½Z À  œ   ¶     ¸  ¹s Þ »I Ó ½Z À  « ¬  ¶     ¸  ¹s ß ½Z ¾ Çs à  µ ¬  ¶     ¸  ¹s á ½Z À Çs à  ¯ ¬  ¶     ¸  ¹s â ½Z ¾ Çs à  ²   ¶     ¸  ¹s ã »I ä ½Z ¾ 2     å   /     *· ±    æ       E ç        è é     ê  å  ¸     å*· *¸  µ 
-*+¶ µ +¶ Æ *+¶ ¶ µ #*+¶ &µ )*+¶ ,µ /*+¶ 2µ 5*+¶ 8µ ;*+¶ >µ A+¶ DÆ *+¶ D¶ Hµ L*+¶ Oµ R+¶ UÆ *+¶ U¶ Yµ ]*+¶ `µ c*+¶ fµ i*+¶ lµ o*+¶ rµ v*+¶ zµ }*+¶ €µ ƒ*+¶ †µ ‰*+¶ Œµ +¶ ’Æ *+¶ ’¶ –µ š*¸ ¸ £µ ©*¸ ¸ £µ ­*,µ °±    æ   ~    G  H 
- I  J  K % M - N 5 O = P E Q M R T S _ U g V n W p X y Z  [ ‰ \ ‘ ] ™ ^ ¡ _ © ` ± a ¹ b À c Â d Ë f Õ g ß h ä i ç        å è é     å ë ì    å í   î    ÿ %       ï  9û Q  ñ   å   /     *´ 
-°    æ       o ç        è é    ò ó  å   >     *+µ 
-±    æ   
-    v  w ç        è é             å   /     *´ °    æ       } ç        è é    ô ó  å   >     *+µ ±    æ   
-    „  … ç        è é             å   /     *´ #°    æ       ‹ ç        è é    õ ó  å   >     *+µ #±    æ   
-    ’  “ ç        è é      %    (   å   /     *´ )°    æ       ™ ç        è é    ö ó  å   >     *+µ )±    æ   
-       ¡ ç        è é      +    .   å   /     *´ /°    æ       § ç        è é    ÷ ó  å   >     *+µ /±    æ   
-    ®  ¯ ç        è é      1    4   å   /     *´ 5°    æ       µ ç        è é    ø ó  å   >     *+µ 5±    æ   
-    ¼  ½ ç        è é      7    :   å   /     *´ ;°    æ       Ã ç        è é    ù ó  å   >     *+µ ;±    æ   
-    Ê  Ë ç        è é      =    @   å   /     *´ A°    æ       Ñ ç        è é    ú ó  å   >     *+µ A±    æ   
-    Ø  Ù ç        è é      C    F   å   /     *´ L°    æ       Ü ç        è é    û ó  å   >     *+µ L±    æ   
-    à  á ç        è é      N    Q   å   /     *´ R°    æ       ç ç        è é    ü ó  å   >     *+µ R±    æ   
-    î  ï ç        è é      T    ý   å   /     *´ ]°    æ       õ ç        è é    þ ó  å   >     *+µ ]±    æ   
-    ü  ý ç        è é      _    ÿ   å   /     *´ c°    æ       ç        è é     ó  å   >     *+µ c±    æ   
-   
- 
- ç        è é      e      å   /     *´ i°    æ       ç        è é    ó  å   >     *+µ i±    æ   
-     ç        è é      k    n   å   /     *´ o°    æ       ç        è é    ó  å   >     *+µ o±    æ   
-   & ' ç        è é      q    t u  å   /     *´ v°    æ      - ç        è é     å   >     *+µ v±    æ   
-   4 5 ç        è é      x y   |   å   /     *´ }°    æ      ; ç        è é    ó  å   >     *+µ }±    æ   
-   B C ç        è é          ‚   å   /     *´ ƒ°    æ      I ç        è é     ó  å   >     *+µ ƒ±    æ   
-   P Q ç        è é      …    u  å   /     *´ ‰°    æ      W ç        è é   	  å   >     *+µ ‰±    æ   
-   ^ _ ç        è é      ‹ y   Ž   å   /     *´ °    æ      e ç        è é   
- ó  å   >     *+µ ±    æ   
-   l m ç        è é      ‘   
-   å   /     *´ š°    æ      s ç        è é    ó  å   >     *+µ š±    æ   
-   z { ç        è é      œ   
-  å   /     *´ ©°    æ       ç        è é     å   >     *+µ ©±    æ   
-   ˆ ‰ ç        è é      « ¬    å   /     *´ ³°    æ       ç        è é     å   >     *+µ ³±    æ   
-   – — ç        è é      µ ¬    å   /     *´ ­°    æ       ç        è é     å   >     *+µ ­±    æ   
-   ¤ ¥ ç        è é      ¯ ¬     å   /     *´ °°    æ      « ç        è é    ó  å   >     *+µ °±    æ   
-   ² ³ ç        è é      ²       ¶      ¹s  
+package gov.irs.fatca.qi.main;
+
+import java.io.IOException;
+
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.builders.WebSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetailsByNameServiceWrapper;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
+import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationProvider;
+import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+
+import gov.irs.fatca.qi.service.user.SiteMinderUserDetailsService;
+import gov.irs.fatca.qi.ui.security.SiteMinderRequestHeaderAuthenticationFilter;
+
+/**
+ * Spring Securities configurations for using SiteMinder pre-authentication.
+ * 
+ * @author li.c.liu
+ *
+ */
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    private UserDetailsService userDetailsService;
+
+    private PreAuthenticatedAuthenticationProvider preAuthenticatedProvider;
+
+    @Value("${security.login.page}")
+    private String loginPage;
+
+    @Value("${security.login.processing.url}")
+    private String loginProcessUrl;
+
+    @Value("${security.use.default.success.url}")
+    private boolean useDefaultSuccessUrl;
+
+    @Value("${security.default.success.url}")
+    private String defaultSuccessUrl;
+
+    @Value("${security.authentication.failure.url}")
+    private String authenticationFailureUrl;
+    
+    @Value("${security.principal.request.header.sadi}")
+    private String principalRequestHeader;
+
+    @Value("${security.logout.url}")
+    private String logoutUrl;
+
+    @Value("${pii.logout.url}")
+    private String piiLogoutUrl;
+
+    @Value("${security.invalidate.http.session}")
+    private boolean invalidateHttpSession;
+
+    @Value("${security.cookie.name}")
+    private String cookieNameToClear;
+
+    @Value("${server.session.timeout}")
+    private String serverSessionTimeout;
+
+    public SecurityConfig() {
+        super();
+
+        userDetailsService = new SiteMinderUserDetailsService();
+        UserDetailsByNameServiceWrapper<PreAuthenticatedAuthenticationToken> wrapper = new UserDetailsByNameServiceWrapper<PreAuthenticatedAuthenticationToken>(
+                userDetailsService);
+
+        preAuthenticatedProvider = new PreAuthenticatedAuthenticationProvider();
+        preAuthenticatedProvider.setPreAuthenticatedUserDetailsService(wrapper);
+    }
+
+    public class NoRedirectSavedRequestAwareAuthenticationSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
+
+        @Override
+        public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
+                Authentication authentication) throws ServletException, IOException {
+
+            request.getSession().setMaxInactiveInterval(Integer.parseInt(serverSessionTimeout));
+        }
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder authenticationManagerBuilder) throws Exception {
+
+        authenticationManagerBuilder.authenticationProvider(preAuthenticatedProvider);
+    }
+
+    @Override
+    public void configure(WebSecurity webSecurity) throws Exception {
+        webSecurity.ignoring().antMatchers("/resources/**");
+    }
+
+    @Override
+    protected void configure(HttpSecurity httpSecurity) throws Exception {
+
+        SiteMinderRequestHeaderAuthenticationFilter siteMinderFilter = new SiteMinderRequestHeaderAuthenticationFilter();
+        siteMinderFilter.setPrincipalRequestHeader(principalRequestHeader);
+        siteMinderFilter.setAuthenticationManager(authenticationManager());
+
+        httpSecurity.addFilter(siteMinderFilter).authorizeRequests()
+                .antMatchers("/qi-newlogin", "/resources/**", "/content/**").permitAll().antMatchers("/**")
+                .hasRole("USER").and().formLogin().loginPage(loginPage).loginProcessingUrl(loginProcessUrl)
+                .defaultSuccessUrl(defaultSuccessUrl, useDefaultSuccessUrl).failureUrl(authenticationFailureUrl)
+                .successHandler(new NoRedirectSavedRequestAwareAuthenticationSuccessHandler()).permitAll().and()
+                .logout().logoutRequestMatcher(new AntPathRequestMatcher(logoutUrl)).permitAll()
+                .logoutSuccessUrl(piiLogoutUrl).invalidateHttpSession(invalidateHttpSession)
+                .deleteCookies(cookieNameToClear).and().sessionManagement().sessionFixation().newSession();
+
+    }
+}
