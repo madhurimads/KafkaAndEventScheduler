@@ -1,97 +1,65 @@
 package gov.irs.fatca.qi.strategy.impl.test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-import java.sql.Date;
-import java.sql.Timestamp;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.context.ActiveProfiles;
 
-import gov.irs.fatca.qi.application.model.RenewalCycle;
-import gov.irs.fatca.qi.application.repository.RenewalCycleRepository;
-import gov.irs.fatca.qi.strategy.RenewalCycleStrategy;
-import gov.irs.fatca.qi.strategy.impl.RenewalCycleStrategyImpl;
+import gov.irs.fatca.qi.application.model.AccountInformation;
+import gov.irs.fatca.qi.strategy.ScreeningStrategy;
+import gov.irs.fatca.qi.strategy.impl.OfacParsingStrategyImpl;
+import gov.irs.fatca.qi.strategy.impl.ScreeningStrategyImpl;
 
 @ExtendWith(MockitoExtension.class)
 @ActiveProfiles("local")
-public class RenewalCycleStrategyImplTest {
+public class OfacScreeningStrategyImplIntegrationTest {
 
-    private RenewalCycle renewalCycle1;
-    private RenewalCycle renewalCycle2;
-    private RenewalCycle renewalCycle3;
+    OfacParsingStrategyImpl ofacScreeningStrategy;
 
-    @Mock
-    RenewalCycleRepository renewalCycleRepository;
-
-    RenewalCycleStrategy renewalCycleStrategy;
+    ScreeningStrategy screeningStrategy;
     
-    @InjectMocks
-    private RenewalCycleStrategyImpl renewalCycleStrategyImpl;
-
     @BeforeEach
-    public void setUp() throws Exception {    	
-    	MockitoAnnotations.openMocks(this);
-    	
-    	renewalCycleStrategy = new RenewalCycleStrategyImpl();
-    	
-        renewalCycle1 = new RenewalCycle();
-        renewalCycle1.setRenewalCycleId("100");
-        renewalCycle1.setRenewalCycleOpenDt(Date.valueOf(LocalDate.of(2015, 1, 10)));
-        renewalCycle1.setRenewalCycleEffectiveDt(Date.valueOf(LocalDate.of(2015, 1, 1)));
-        renewalCycle1.setRenewalCycleDueDt(Date.valueOf(LocalDate.of(2015, 2, 1)));
-        renewalCycle1.setUpdatedById("admin");
-        renewalCycle1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
-
-        renewalCycle2 = new RenewalCycle();
-        renewalCycle2.setRenewalCycleId("101");
-        renewalCycle2.setRenewalCycleOpenDt(Date.valueOf(LocalDate.of(2016, 10, 5)));
-        renewalCycle2.setRenewalCycleEffectiveDt(Date.valueOf(LocalDate.of(2016, 9, 1)));
-        renewalCycle2.setRenewalCycleDueDt(Date.valueOf(LocalDate.of(2016, 10, 15)));
-        renewalCycle2.setUpdatedById("admin");
-        renewalCycle2.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
-
-        renewalCycle3 = new RenewalCycle();
-        renewalCycle3.setRenewalCycleId("102");
-        renewalCycle3.setRenewalCycleOpenDt(Date.valueOf(LocalDate.of(2016, 11, 1)));
-        renewalCycle3.setRenewalCycleEffectiveDt(Date.valueOf(LocalDate.of(2016, 10, 16)));
-        renewalCycle3.setRenewalCycleDueDt(Date.valueOf(LocalDate.of(2016, 12, 31)));
-        renewalCycle3.setUpdatedById("admin");
-        renewalCycle3.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
-
-        renewalCycleRepository.save(renewalCycle1);
-        renewalCycleRepository.save(renewalCycle2);
-        renewalCycleRepository.save(renewalCycle3);
-
-    }
-
-    @AfterEach
-    public void tearDown() throws Exception {
-        renewalCycleRepository.delete(renewalCycle1);
-        renewalCycleRepository.delete(renewalCycle2);
-        renewalCycleRepository.delete(renewalCycle3);
+    public void setup() {
+    	ofacScreeningStrategy = new OfacParsingStrategyImpl();
+    	screeningStrategy = new ScreeningStrategyImpl();
     }
 
     @Test
-    public void testGetCurrentRenewalCycle() {
-    	List<RenewalCycle> resultLst = new ArrayList<>();
-    	resultLst.add(renewalCycle2);
-    	
-    	when(renewalCycleRepository.getRenewalCycleList()).thenReturn(resultLst);
-        RenewalCycle renewalCycle = renewalCycleStrategy.getCurrentRenewalCycle();
-        assertEquals(renewalCycle2.getRenewalCycleId(), renewalCycle.getRenewalCycleId());
+    public void parseLegalNameTest() {
+        String testString = "  ..'a  b9090 #})({ c  d1452-..[]'e  f  g    h   i {}  j k '35479. l %#   m  /&' n- O P - q &&%[)  r  s ({['  t u V -'.8564'.  w..-''-x656863--   --y--465456.''.'.'.'-- z   ";
+        String result = ofacScreeningStrategy.parseLegalName(testString);
+        assertEquals("A B C D E F G H I J K L M N O P Q R S T U V W X Y Z", result);
+    }
+
+    @Test
+    public void parseItinTest() {
+        String testString = "  ..'a  b \" \"  c  d.'-..'e  f  g    h   i   j k ''.'. l   m n- O P - q   r  s   t u V -'.\"\"'.  w..-''-x--   --y--.''.'.'.'-- z   ";
+        String result = ofacScreeningStrategy.parseItin(testString);
+        assertEquals("A B C D E F G H I J K L M N O P Q R S T U V W X Y Z", result);
+    }
+
+    @Test
+    public void testOfacMatch() {
+        String legalName = "ZIMBABWE DEFENCE INDUSTRIES (PVT) LTD";
+        String itinName = "ZIMBABWE DEFENCE INDUSTRIES (PVT)& LTD";
+
+        assertFalse(screeningStrategy.passedOfacCheck(legalName, itinName));
+
+    }
+
+    @Disabled
+    @Test
+    public void testOfacMatchDb() {
+        AccountInformation accountInfo = new AccountInformation();
+        accountInfo.setLegalNm("ZIMBABWE DEFENCE INDUSTRIES (PVT) LTD");
+        assertFalse(screeningStrategy.passedOfacCheck(accountInfo));
+        accountInfo.setLegalNm("TENTH & CO (PVT) LTD");
+        assertFalse(screeningStrategy.passedOfacCheck(accountInfo));
     }
 
 }
