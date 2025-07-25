@@ -1,334 +1,150 @@
-/**
- * 
- */
-package gov.irs.fatca.qi.strategy.impl;
+package gov.irs.fatca.qi.main.tests;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import jakarta.annotation.Resource;
-
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
-import gov.irs.fatca.qi.application.model.AccountInformation;
-import gov.irs.fatca.qi.application.model.Exemption;
+import gov.irs.fatca.qi.application.model.Message;
+import gov.irs.fatca.qi.application.model.MessageStatus;
+import gov.irs.fatca.qi.application.model.MessageType;
 import gov.irs.fatca.qi.application.model.QiEntity;
-import gov.irs.fatca.qi.application.model.Screening;
-import gov.irs.fatca.qi.application.model.Submission;
-import gov.irs.fatca.qi.application.repository.AccountInformationRepository;
-import gov.irs.fatca.qi.application.repository.EntityStatusRepository;
-import gov.irs.fatca.qi.application.repository.ExemptionRepository;
-import gov.irs.fatca.qi.application.repository.QiEntityPersonRoleRepository;
+import gov.irs.fatca.qi.application.model.QiEntityMessage;
+import gov.irs.fatca.qi.application.model.RenewalCycle;
+import gov.irs.fatca.qi.application.model.RenewalCycleMessage;
+import gov.irs.fatca.qi.application.model.pk.RenewalCycleMessagePK;
+import gov.irs.fatca.qi.application.repository.MessageRepository;
+import gov.irs.fatca.qi.application.repository.MessageStatusRepository;
+import gov.irs.fatca.qi.application.repository.MessageTypeRepository;
+import gov.irs.fatca.qi.application.repository.QiEntityMessageRepository;
 import gov.irs.fatca.qi.application.repository.QiEntityRepository;
-import gov.irs.fatca.qi.application.repository.QiEntityStatusChangeReasonRepository;
-import gov.irs.fatca.qi.application.repository.QiEntityStatusHistoryRepository;
-import gov.irs.fatca.qi.application.repository.QiEntityStatusTrackingRepository;
+import gov.irs.fatca.qi.application.repository.RenewalCycleMessageRepository;
 import gov.irs.fatca.qi.application.repository.RenewalCycleRepository;
-import gov.irs.fatca.qi.application.repository.ScreeningRepository;
-import gov.irs.fatca.qi.application.repository.ScreeningResultRepository;
-import gov.irs.fatca.qi.application.repository.SubmissionHistoryRepository;
-import gov.irs.fatca.qi.application.repository.SubmissionRepository;
-import gov.irs.fatca.qi.application.repository.SubmissionStatusRepository;
-import gov.irs.fatca.qi.application.repository.SubmissionTypeRepository;
-import gov.irs.fatca.qi.application.repository.SubmsnStatusChangeReasonRepository;
-import gov.irs.fatca.qi.domain.enums.StatusChangeReasonsEnum;
-import gov.irs.fatca.qi.ofac.model.OfacEntity;
-import gov.irs.fatca.qi.ofac.repository.CountryRepository;
-import gov.irs.fatca.qi.ofac.repository.KycRuleTypeRepository;
-import gov.irs.fatca.qi.ofac.repository.OfacEntityRepository;
-import gov.irs.fatca.qi.service.EmailNotificationService;
-import gov.irs.fatca.qi.service.MessageTransmissionService;
-import gov.irs.fatca.qi.service.impl.EntityAndSubmissionStatusServiceImpl;
-import gov.irs.fatca.qi.strategy.ScreeningStrategy;
-import gov.irs.fatca.qi.strategy.util.UUIDUtils;
-import gov.irs.fatca.qi.domain.enums.SubmissionTypeEnum;
+import gov.irs.fatca.qi.main.FatcaQiDalMain;
 
-/**
- * @author shazhou.b.feng
- *
- */
-@Service
-public class ScreeningStrategyImpl implements ScreeningStrategy {
-    @Autowired
-    QiEntityRepository qiEntityRepository;
+@ExtendWith(MockitoExtension.class)
+@SpringBootTest(classes = FatcaQiDalMain.class)
+@ActiveProfiles("local")
+public class RenewalCycleMessageRepositoryIntegrationTest {
+
+    private RenewalCycleMessagePK renewalCycleMessagePk1;
+    private RenewalCycleMessage sampleRenewalCycleMessage1;
+    private QiEntityMessage sampleQiEntityMessage1;
+    private RenewalCycle sampleRenewalCycle1;
+    private QiEntityMessage sampleQiEntityMessage2;
+    private QiEntity sampleQiEntity1;
+    private QiEntity sampleQiEntity2;
+    private Message sampleMessage;
+    private MessageType messageType;
+    private MessageStatus messageStatus;
 
     @Autowired
-    EntityStatusRepository entityStatusRepository;
+    MessageRepository messageRepository;
 
     @Autowired
-    QiEntityStatusTrackingRepository qiEntityStatusTrackingRepository;
+    MessageStatusRepository messageStatusRepository;
 
     @Autowired
-    SubmissionRepository submissionRepository;
+    MessageTypeRepository messageTypeRepository;
 
     @Autowired
-    SubmissionTypeRepository submissionTypeRepository;
+    QiEntityRepository sampleQiEntityRepository;
 
     @Autowired
-    SubmissionHistoryRepository submissionHistoryRepository;
+    RenewalCycleMessageRepository sampleRenewalCycleMessageRepository;
 
     @Autowired
-    SubmissionStatusRepository submissionStatusRepository;
+    RenewalCycleRepository sampleRenewalCycleRepository;
 
     @Autowired
-    AccountInformationRepository accountInformationRepository;
+    QiEntityMessageRepository sampleQiEntityMessageRepository;
 
-    @Autowired
-    MessageTransmissionService messageTransmissionService;
+    @BeforeEach
+    public void setUp() throws Exception {
 
-    @Autowired
-    EmailNotificationService emailNotificationService;
+        sampleQiEntity1 = new QiEntity();
+        sampleQiEntity1.setQiEntityId("LL");
+        sampleQiEntity1.setCreateTs(Timestamp.valueOf(LocalDateTime.now()));
+        sampleQiEntity1.setCreatedById("VV");
+        sampleQiEntity1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
+        sampleQiEntity1.setUpdatedById("012345678901234567890123456789012345");
+        sampleQiEntityRepository.save(sampleQiEntity1);
 
-    @Autowired
-    QiEntityPersonRoleRepository qiEntityPersonRoleRepository;
-
-    @Autowired
-    ExemptionRepository exemptionRepository;
-
-    @Autowired
-    ScreeningResultRepository screeningResultRepository;
-
-    @Autowired
-    ScreeningRepository screeningRepository;
-
-    @Resource
-    EntityAndSubmissionStatusServiceImpl entityAndSubmissionStatusService;
-
-    @Autowired
-    CountryRepository countryRepository;
-
-    @Autowired
-    KycRuleTypeRepository kycRuleTypeRepository;
-
-    @Autowired
-    QiEntityStatusChangeReasonRepository qiEntityStatusChangeReasonRepository;
-
-    @Autowired
-    OfacEntityRepository ofacEntityRepository;
-
-    @Autowired
-    OfacParsingStrategyImpl ofacParsingStrategy;
-
-    @Autowired
-    QiEntityStatusHistoryRepository qiEntityStatusHistoryRepository;
-
-    @Autowired
-    SubmsnStatusChangeReasonRepository submsnStatusChangeReasonRepository;
-
-    @Autowired
-    RenewalCycleRepository renewalCycleRepository;
-
-
-    @Value("${screening.admin}")
-    private String screeningAdmin;
-
-    @Value("${snapshot.strategy.enabled}")
-    private boolean snapshotStrategyEnabled;
-
-    private static final String SUBMISSION_STATUS_PENDING = "PE";
-    private static final String SUBMISSION_STATUS_REJECTED = "RE";
-    private static final String QI_REGIME_CD = "QI";
-    private final static String FAILED_SCREENING = "FL";
-    private final static String PASSED_SCREENING = "PS";
-    private final static String EXEMPTED_SCREENING = "EX";
-    private final static String SKIPPED_SCREENING = "SK";
-
-    /**
-     * Method for submissionScreening for KYC, OFAC and Excluded Country check
-     * 
-     * @param entityId
-     * @param formId
-     */
-    public void screening(String entityId, String formId) {
-
-        QiEntity qiEntity = qiEntityRepository.findById(entityId).orElse(null);
-        Submission submission = submissionRepository.findById(formId).orElse(null);
-        Exemption exemptionStatus = exemptionRepository.findExemptionByActiveAndQiEntityId(qiEntity.getQiEntityId());
-        Screening screeningItem = new Screening();
-
-        AccountInformation accountInfo = accountInformationRepository.findByQiEntityId(entityId);
-        boolean failedScreening = false;
-
-        failedScreening = runKycCheck(qiEntity, submission, exemptionStatus, screeningItem, accountInfo,
-                failedScreening);
-        if (!failedScreening) {
-            failedScreening = runExcludeCountryCheck(submission, exemptionStatus, screeningItem, accountInfo,
-                    failedScreening);
-        }
-        if (!failedScreening) {
-            runOfacCheck(accountInfo, submission, exemptionStatus, screeningItem);
+        sampleQiEntityMessage1 = new QiEntityMessage();
+        sampleQiEntityMessage1.setQiEntityMessageId("YY");
+        if (messageRepository.existsById("M-001")) {
+            sampleMessage = messageRepository.findById("M-001").orElse(null);
+            sampleQiEntityMessage1.setMessage(sampleMessage);
         }
 
-        screeningItem.setQiEntity(qiEntity);
-        screeningItem.setScreeningId(UUIDUtils.generate32UUID());
-        screeningItem.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
-        screeningItem.setUpdatedById(screeningAdmin);
-        screeningItem.setSubmissionTypeCd(submission.getSubmissionTypeCd());
-        screeningItem.setRenewalCycleId(submission.getRenewalCycleId());
-        screeningRepository.save(screeningItem);
-        if (exemptionStatus != null) {
-            exemptionStatus.setActiveInd(0);
-            exemptionRepository.save(exemptionStatus);
+        if (messageStatusRepository.existsById("NW")) {
+            messageStatus = messageStatusRepository.findById("NW").orElse(null);
+            sampleQiEntityMessage1.setMessageStatus(messageStatus);
         }
+        sampleQiEntityMessage1.setQiEntity(sampleQiEntity1);
+        sampleQiEntityMessage1.setMessageTxt(sampleMessage.getMessageDsc());
+        sampleQiEntityMessage1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
+        sampleQiEntityMessage1.setUpdatedById("012345678901234567890123456789012345");
+        sampleQiEntityMessage1.setCreateTs(Timestamp.valueOf(LocalDateTime.now()));
+        sampleQiEntityMessage1.setCreatedById("VV");
+
+        sampleQiEntityMessageRepository.save(sampleQiEntityMessage1);
+
+        sampleRenewalCycle1 = new RenewalCycle();
+        sampleRenewalCycle1.setRenewalCycleId("9");
+        sampleRenewalCycle1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
+        sampleRenewalCycle1.setUpdatedById("012345678901234567890123456789012345");
+        sampleRenewalCycleRepository.save(sampleRenewalCycle1);
+
+        renewalCycleMessagePk1 = new RenewalCycleMessagePK();
+        renewalCycleMessagePk1.setMessage(sampleQiEntityMessage1);
+        renewalCycleMessagePk1.setRenewalCycle(sampleRenewalCycle1);
+
+        sampleRenewalCycleMessage1 = new RenewalCycleMessage();
+        sampleRenewalCycleMessage1.setRenewalCycleMessagePK(renewalCycleMessagePk1);
+        sampleRenewalCycleMessage1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
+        sampleRenewalCycleMessage1.setUpdatedById("012345678901234567890123456789012345");
+        sampleRenewalCycleMessageRepository.save(sampleRenewalCycleMessage1);
 
     }
 
-    /**
-     * @param qiEntity
-     * @param submission
-     * @param exemptionStatus
-     * @param screeningItem
-     */
-    private void runOfacCheck(AccountInformation accountInfo, Submission submission, Exemption exemptionStatus,
-            Screening screeningItem) {
-        if (exemptionStatus != null && isOfacCheckExempt(exemptionStatus)) {
-            screeningItem.setOfacResultCd(screeningResultRepository.findById(EXEMPTED_SCREENING).orElse(null));
-        } else if (passedOfacCheck(accountInfo)) {
-            screeningItem.setOfacResultCd(screeningResultRepository.findById(PASSED_SCREENING).orElse(null));
-        } else {
-            screeningItem.setOfacResultCd(screeningResultRepository.findById(FAILED_SCREENING).orElse(null));
-     
-            entityAndSubmissionStatusService.updateSubmissionStatus(submission.getQiEntityId().getQiEntityId(),
-                    submission.getSubmissionId(), screeningAdmin, SUBMISSION_STATUS_REJECTED,
-                    StatusChangeReasonsEnum.REASON_36.getCode());
-            
-            // Per business rules when an application fails OFAC Check, Entity status is updated to Rejected
-            // Per business rules when an renewal fails OFAC Check, Entity status is updated to Pending
-            
-            if (submission.getSubmissionTypeCd().getSubmissionTypeCd().equals(SubmissionTypeEnum.APPLICATION.getText())) {
-	            entityAndSubmissionStatusService.updateEntityStatus(submission.getQiEntityId().getQiEntityId(),
-	                    SUBMISSION_STATUS_REJECTED, StatusChangeReasonsEnum.REASON_36.getCode(), screeningAdmin);
-            } else {
-                entityAndSubmissionStatusService.updateEntityStatus(submission.getQiEntityId().getQiEntityId(),
-                        SUBMISSION_STATUS_PENDING, StatusChangeReasonsEnum.REASON_36.getCode(), screeningAdmin);                  
-            
-            }
-        }
+    @AfterEach
+    public void tearDown() throws Exception {
+
+        sampleRenewalCycleMessageRepository.delete(sampleRenewalCycleMessage1);
+
+        sampleQiEntityMessageRepository.delete(sampleQiEntityMessage1);
+        sampleQiEntityRepository.delete(sampleQiEntity1);
+        sampleRenewalCycleRepository.delete(sampleRenewalCycle1);
     }
 
-    /**
-     * @param qiEntity
-     * @param submission
-     * @param exemptionStatus
-     * @param screeningItem
-     * @param accountInfo
-     * @param failedScreening
-     * @return
-     */
-    private boolean runKycCheck(QiEntity qiEntity, Submission submission, Exemption exemptionStatus,
-            Screening screeningItem, AccountInformation accountInfo, boolean failedScreening) {
-        if (qiEntity.getQiRegimeCd().getQiRegimeCd().equals(QI_REGIME_CD)) {
-            if (exemptionStatus != null && isKycCheckExempt(exemptionStatus)) {
-                screeningItem.setKycResultCd(screeningResultRepository.findById(EXEMPTED_SCREENING).orElse(null));
-            } else if (!qiEntity.getKycRuleTypeCd().equals("XX")) {
-                screeningItem.setKycResultCd(screeningResultRepository.findById(PASSED_SCREENING).orElse(null));
-            } else {
-                screeningItem.setKycResultCd(screeningResultRepository.findById(FAILED_SCREENING).orElse(null));
-                screeningItem.setEcResultCd(screeningResultRepository.findById(SKIPPED_SCREENING).orElse(null));
-                screeningItem.setOfacResultCd(screeningResultRepository.findById(SKIPPED_SCREENING).orElse(null));
+    @Disabled
+    @Test
+    public void testSave() {
+    	fail("Not right, I shouldn't even run");
+        List<RenewalCycleMessage> resultList = sampleRenewalCycleMessageRepository.findAll();
 
-                entityAndSubmissionStatusService.updateSubmissionStatus(submission.getQiEntityId().getQiEntityId(),
-                        submission.getSubmissionId(), screeningAdmin, SUBMISSION_STATUS_PENDING,
-                        StatusChangeReasonsEnum.REASON_35.getCode());
-                entityAndSubmissionStatusService.updateEntityStatus(submission.getQiEntityId().getQiEntityId(),
-                        SUBMISSION_STATUS_PENDING, StatusChangeReasonsEnum.REASON_35.getCode(), screeningAdmin);
-                failedScreening = true;
-            }
-        } else {
-            screeningItem.setKycResultCd(screeningResultRepository.findById(SKIPPED_SCREENING).orElse(null));
-        }
-        return failedScreening;
+        assertEquals(1, resultList.size());
     }
 
-    /**
-     * @param submission
-     * @param exemptionStatus
-     * @param screeningItem
-     * @param accountInfo
-     * @param failedScreening
-     * @return
-     */
-    private boolean runExcludeCountryCheck(Submission submission, Exemption exemptionStatus, Screening screeningItem,
-            AccountInformation accountInfo, boolean failedScreening) {
-        if (exemptionStatus != null && isExcludedCountryCheckExcempt(exemptionStatus)) {
-            screeningItem.setEcResultCd(screeningResultRepository.findById(EXEMPTED_SCREENING).orElse(null));
-        } else if (passedCountryExclusionCheck(accountInfo)) {
-            screeningItem.setEcResultCd(screeningResultRepository.findById(PASSED_SCREENING).orElse(null));
-        } else {
-            screeningItem.setEcResultCd(screeningResultRepository.findById(FAILED_SCREENING).orElse(null));
-            screeningItem.setOfacResultCd(screeningResultRepository.findById(SKIPPED_SCREENING).orElse(null));
-            failedScreening = true;
-            
-            entityAndSubmissionStatusService.updateSubmissionStatus(submission.getQiEntityId().getQiEntityId(),
-                    submission.getSubmissionId(), screeningAdmin, SUBMISSION_STATUS_REJECTED,
-                    StatusChangeReasonsEnum.REASON_34.getCode());
-            
-            // Per business rules when an application fails excluded countries check, Entity status is updated to Rejected
-            // Per business rules when an renewal fails excluded countries check, Entity status is updated to Pending    
-            
-            if (submission.getSubmissionTypeCd().getSubmissionTypeCd().equals(SubmissionTypeEnum.APPLICATION.getText())) {
-            	entityAndSubmissionStatusService.updateEntityStatus(submission.getQiEntityId().getQiEntityId(),
-                    SUBMISSION_STATUS_REJECTED, StatusChangeReasonsEnum.REASON_34.getCode(), screeningAdmin);
-            } else {            
-            	entityAndSubmissionStatusService.updateEntityStatus(submission.getQiEntityId().getQiEntityId(),
-        			SUBMISSION_STATUS_PENDING, StatusChangeReasonsEnum.REASON_34.getCode(), screeningAdmin);
-            }
-        }
-        return failedScreening;
+    @Disabled
+    @Test
+    public void testFindByEntityId() {
+        List<RenewalCycleMessage> resultList = sampleRenewalCycleMessageRepository
+                .findByEntityId(sampleQiEntity1.getQiEntityId());
+        assertEquals(1, resultList.size());
     }
 
-    /**
-     * helper method to determine KYC Check Exemption status
-     * 
-     * @param exemptionStatus
-     * @return
-     */
-    private boolean isKycCheckExempt(Exemption exemptionStatus) {
-        return exemptionStatus.getKycExemptInd() == 1;
-    }
-
-    /**
-     * helper method to determine OFAC Check Exemption status
-     * 
-     * @param exemptionStatus
-     * @return
-     */
-    private boolean isOfacCheckExempt(Exemption exemptionStatus) {
-        return exemptionStatus.getOfacExemptInd() == 1;
-    }
-
-    /**
-     * helper method to determine Excluded Country Check Exemption status
-     * 
-     * @param exemptionStatus
-     * @return
-     */
-    private boolean isExcludedCountryCheckExcempt(Exemption exemptionStatus) {
-        return exemptionStatus.getEcExemptInd() == 1;
-    }
-
-    private boolean passedCountryExclusionCheck(AccountInformation accountInfo) {
-        return !countryRepository.existsByExcludedCountry(accountInfo.getResidenceCountryId());
-    }
-
-    // both the itin name and the user provided legal name will use the
-    // parseLegalName function so the parsing strategies match
-    public boolean passedOfacCheck(AccountInformation accountInfo) {
-        List<OfacEntity> allOfacEntity = ofacEntityRepository.findAll();
-        return !allOfacEntity.stream().anyMatch(x -> ofacParsingStrategy.parseLegalName(x.getEntityName())
-                .equals(ofacParsingStrategy.parseLegalName(accountInfo.getLegalNm())));
-    }
-
-    public boolean passedOfacCheck(String legalName, String itinName) {
-        String filteredLegalName = ofacParsingStrategy.parseLegalName(legalName);
-        String filteredItinName = ofacParsingStrategy.parseLegalName(itinName);
-        if (filteredLegalName.equals(filteredItinName)) {
-            return false;
-        } else {
-            return true;
-        }
-    };
 }
