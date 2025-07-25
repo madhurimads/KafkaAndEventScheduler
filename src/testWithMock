@@ -1,150 +1,807 @@
-package gov.irs.fatca.qi.main.tests;
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
+	<modelVersion>4.0.0</modelVersion>
 
-import java.sql.Timestamp;
-import java.time.LocalDateTime;
-import java.util.List;
+	<!-- Command for updating the project version mvn versions:set
+	-DnewVersion=0.0.X -->
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.4.2</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
 
-import gov.irs.fatca.qi.application.model.Message;
-import gov.irs.fatca.qi.application.model.MessageStatus;
-import gov.irs.fatca.qi.application.model.MessageType;
-import gov.irs.fatca.qi.application.model.QiEntity;
-import gov.irs.fatca.qi.application.model.QiEntityMessage;
-import gov.irs.fatca.qi.application.model.RenewalCycle;
-import gov.irs.fatca.qi.application.model.RenewalCycleMessage;
-import gov.irs.fatca.qi.application.model.pk.RenewalCycleMessagePK;
-import gov.irs.fatca.qi.application.repository.MessageRepository;
-import gov.irs.fatca.qi.application.repository.MessageStatusRepository;
-import gov.irs.fatca.qi.application.repository.MessageTypeRepository;
-import gov.irs.fatca.qi.application.repository.QiEntityMessageRepository;
-import gov.irs.fatca.qi.application.repository.QiEntityRepository;
-import gov.irs.fatca.qi.application.repository.RenewalCycleMessageRepository;
-import gov.irs.fatca.qi.application.repository.RenewalCycleRepository;
-import gov.irs.fatca.qi.main.FatcaQiDalMain;
 
-@ExtendWith(MockitoExtension.class)
-@SpringBootTest(classes = FatcaQiDalMain.class)
-@ActiveProfiles("local")
-public class RenewalCycleMessageRepositoryIntegrationTest {
+	<groupId>irs.fatca.qi</groupId>
+	<artifactId>irs-fatca-qi</artifactId>
+	<version>3.2.1</version>
+	<packaging>pom</packaging>
 
-    private RenewalCycleMessagePK renewalCycleMessagePk1;
-    private RenewalCycleMessage sampleRenewalCycleMessage1;
-    private QiEntityMessage sampleQiEntityMessage1;
-    private RenewalCycle sampleRenewalCycle1;
-    private QiEntityMessage sampleQiEntityMessage2;
-    private QiEntity sampleQiEntity1;
-    private QiEntity sampleQiEntity2;
-    private Message sampleMessage;
-    private MessageType messageType;
-    private MessageStatus messageStatus;
+	<name>irs-fatca-qi</name>
+	<url>http://maven.apache.org</url>
 
-    @Autowired
-    MessageRepository messageRepository;
+	<!-- This is not cool but it will work for now <repository>
+	<id>project.local</id>
+		<name>project</name> <url>file:${project.basedir}/repo</url> </repository>
+		</repositories> -->
 
-    @Autowired
-    MessageStatusRepository messageStatusRepository;
+	<modules>
+		<module>../fi-reg-service</module>
+		<module>irs-fatca-qi-core</module>
+		<module>irs-fatca-qi-domain</module>
+		<module>irs-fatca-qi-strategy</module>
+		<module>irs-fatca-qi-repository</module>
+		<module>irs-fatca-qi-admin</module>
+		<module>irs-fatca-qi-ui</module>
+		<module>irs-fatca-qi-bsl</module>
+		<module>irs-fatca-qi-dal</module>
+		<!-- <module>irs-fatca-qi-batch</module>
+		<module>irs-fatca-qi-saas-batch</module> 
+		<module>irs-fatca-qi-termination-batch</module> -->
+		<module>irs-fatca-qi-ui-services</module>
+	</modules>
 
-    @Autowired
-    MessageTypeRepository messageTypeRepository;
+	<!-- Build Plugins and Configuration-->
+	<build>
+		<defaultGoal>install</defaultGoal>
 
-    @Autowired
-    QiEntityRepository sampleQiEntityRepository;
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-assembly-plugin</artifactId>
+					<version>3.1.0</version>
+					<configuration>
+						<finalName>${project.version}</finalName>
+						<tarLongFileMode>${tar.long.file.mode}</tarLongFileMode>
+					</configuration>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-antrun-plugin</artifactId>
+					<version>3.1.0</version>
+				</plugin>
+				<!-- These three override the SpringBoot dependencyManagement -->
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>${org.apache.maven.compiler-version}</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-javadoc-plugin</artifactId>
+					<version>2.10.3</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-failsafe-plugin</artifactId>
+					<version>${org.apache.maven.failsafe-version}</version>
+				</plugin>
+				<plugin>
+					<groupId>org.jacoco</groupId>
+					<artifactId>jacoco-maven-plugin</artifactId>
+					<version>${org.jacoco-version}</version>
+				</plugin>
+				<plugin>
+					<groupId>org.sonarsource.scanner.maven</groupId>
+					<artifactId>sonar-maven-plugin</artifactId>
+					<version>${sonar-version}</version>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<fork>true</fork>
+					<compilerArgument>-Xlint:all</compilerArgument>
+					<compilerArgs>
+                		<arg>-parameters</arg>
+            		</compilerArgs>
+					<showWarnings>true</showWarnings>
+					<showDeprecation>true</showDeprecation>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-javadoc-plugin</artifactId>
+				<configuration>
+					<!-- Here you can add special configurations for your
+					javadoc, if needed -->
+					<additionalparam>-Xdoclint:none</additionalparam>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jxr-plugin</artifactId>
+				<version>${org.apache.maven.jxr-version}</version>
+			</plugin>
+			<!-- Maven Reports plugin -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<dependencies>
+					
+					<dependency>
+						<groupId>org.apache.maven.surefire</groupId>
+						<artifactId>surefire-logger-api</artifactId>
+						<version>2.21.0</version>
+						<!-- to get around bug
+						https://github.com/junit-team/junit5/issues/1367 -->
+						<optional>true</optional>
+					</dependency>
+				</dependencies>
+				<configuration>
+					<forkCount>5</forkCount>
+					<reuseForks>true</reuseForks>
+					<!-- Sets the VM argument line used when unit tests are run. -->
+					<!-- <argLine>${surefireArgLine}</argLine> -->
+					<!-- argLine> -Xmx2048m ${jacoco.agent.argLine} </argLine -->
+					<argLine>@{argLine} -Xmx2048m </argLine>
+					<!-- Skips unit tests if the value of skip.unit.tests
+					property is true -->
+					<skipTests>${skip.unit.tests}</skipTests>		
+					<includes>
+						<include>**/*Test*.java</include>
+						<include>**/*.java</include>
+						<include>**/*Tests.java</include>
+						<include>**/*TestCase.java</include>
+					</includes>
 
-    @Autowired
-    RenewalCycleMessageRepository sampleRenewalCycleMessageRepository;
+					<excludes>
+						<exclude>**/*IntegrationTest*.java</exclude>
+						<exclude>**/*IntegrationTest.java</exclude>
+						<exclude>**/*ExternalTests.java</exclude>
+						<exclude>**/*ExternalTest.java</exclude>
+						<exclude>**/*Skip*.java</exclude>
+						<exclude>**/*Exclude*.java</exclude>
+						<exclude>**/*Skip.java</exclude>
+						<exclude>**/*Exclude.java</exclude>
+					</excludes>
+				</configuration>
+			</plugin>
 
-    @Autowired
-    RenewalCycleRepository sampleRenewalCycleRepository;
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-failsafe-plugin</artifactId>
+				<executions>
+					<!-- Ensures that both integration-test and verify goals of
+					the Failsafe
+						Maven plugin are executed. -->
+					<execution>
+						<id>integration-tests</id>
+						<goals>
+							<goal>integration-test</goal>
+							<goal>verify</goal>
+						</goals>
+						<configuration>
+							<!-- Sets the VM argument line used when integration
+							tests are run. -->
+							<!-- <argLine>-Xmx4096m -XX:MaxPermSize=512M
+							${itCoverageAgent} ${jacoco.agent.argLine}
+								</argLine> -->
+							<argLine> @{argLine} -Xmx4096m </argLine>
+							<!-- Skips integration tests if the value of
+							skip.integration.tests
+								property is true -->
+							<!--QI_QUEST <skipTests>${skip.integration.tests}</skipTests> -->
+							<skipTests>true</skipTests>
+							<includes>
+								<include>**/*IntegrationTest*.java</include>
+								<include>**/*IntegrationTest.java</include>
+							</includes>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 
-    @Autowired
-    QiEntityMessageRepository sampleQiEntityMessageRepository;
+			<plugin>
+				<artifactId>maven-release-plugin</artifactId>
+			</plugin>
 
-    @BeforeEach
-    public void setUp() throws Exception {
+			<!-- maven pmd plugin -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-pmd-plugin</artifactId>
+				<version>${pmd-version}</version>
+				<configuration>
 
-        sampleQiEntity1 = new QiEntity();
-        sampleQiEntity1.setQiEntityId("LL");
-        sampleQiEntity1.setCreateTs(Timestamp.valueOf(LocalDateTime.now()));
-        sampleQiEntity1.setCreatedById("VV");
-        sampleQiEntity1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
-        sampleQiEntity1.setUpdatedById("012345678901234567890123456789012345");
-        sampleQiEntityRepository.save(sampleQiEntity1);
+					<linkXref>true</linkXref>
+					<sourceEncoding>utf-8</sourceEncoding>
+					<minimumTokens>1</minimumTokens>
+					<targetJdk>${java-version}</targetJdk>
+				</configuration>
+			</plugin>
 
-        sampleQiEntityMessage1 = new QiEntityMessage();
-        sampleQiEntityMessage1.setQiEntityMessageId("YY");
-        if (messageRepository.existsById("M-001")) {
-            sampleMessage = messageRepository.findById("M-001").orElse(null);
-            sampleQiEntityMessage1.setMessage(sampleMessage);
-        }
+			<!-- Version plugin for version changes - BUILD-SNAPSHOT -->
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>versions-maven-plugin</artifactId>
+			</plugin>
 
-        if (messageStatusRepository.existsById("NW")) {
-            messageStatus = messageStatusRepository.findById("NW").orElse(null);
-            sampleQiEntityMessage1.setMessageStatus(messageStatus);
-        }
-        sampleQiEntityMessage1.setQiEntity(sampleQiEntity1);
-        sampleQiEntityMessage1.setMessageTxt(sampleMessage.getMessageDsc());
-        sampleQiEntityMessage1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
-        sampleQiEntityMessage1.setUpdatedById("012345678901234567890123456789012345");
-        sampleQiEntityMessage1.setCreateTs(Timestamp.valueOf(LocalDateTime.now()));
-        sampleQiEntityMessage1.setCreatedById("VV");
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-site-plugin</artifactId>
+				<configuration>
+					<reportPlugins>
+						<plugin>
+							<groupId>org.apache.maven.plugins</groupId>
+							<artifactId>maven-javadoc-plugin</artifactId>
+							<version>${org.apache.maven.javadoc-version}</version>
+							<reportSets>
+								<reportSet>
+									<id>aggregate</id>
+									<reports>
+										<report>aggregate</report>
+									</reports>
+								</reportSet>
+							</reportSets>
+							<configuration>
+								<!-- Here you can add special configurations for
+								your javadoc, if
+									needed -->
+								<additionalparam>-Xdoclint:none</additionalparam>
+							</configuration>
+						</plugin>
+						<plugin>
+							<groupId>org.apache.maven.plugins</groupId>
+							<artifactId>maven-pmd-plugin</artifactId>
+						</plugin>
+						<plugin>
+							<groupId>org.jacoco</groupId>
+							<artifactId>jacoco-maven-plugin</artifactId>
+						</plugin>
+						<plugin>
+							<groupId>com.github.spotbugs</groupId>
+							<artifactId>spotbugs-maven-plugin</artifactId>
+						</plugin>
+						<plugin>
+							<groupId>org.apache.maven.plugins</groupId>
+							<artifactId>maven-jar-plugin</artifactId>
+							<configuration>
+								<useDefaultManifestFile>true</useDefaultManifestFile>
+								<archive>
+									<manifest>
+										<addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+									</manifest>
+									<manifestEntries>
+										<Build-Time>${maven.build.timestamp}</Build-Time>
+									</manifestEntries>
+								</archive>
+							</configuration>
+						</plugin>
+						<!-- Here you can also configure more report plugins -->
+						<!-- for your site, such as
+						maven-project-info-reports-plugin -->
+					</reportPlugins>
+				</configuration>
+			</plugin>
+			<!-- <plugin> <groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-maven-plugin</artifactId>
+				</plugin> -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<!-- If you want reports going to standard location comment out
+				these
+							two configuration lines. -->
+				<configuration>
+					<destFile>
+						${project.build.directory}/coverage-reports/jacoco-ut.exec</destFile>
+					<dataFile>
+						${project.build.directory}/coverage-reports/jacoco-ut.exec</dataFile>
+				</configuration>
+				<executions>
+					<execution>
+						<id>default-prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>default-report</id>
+						<phase>prepare-package</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>default-check</id>
+						<goals>
+							<goal>check</goal>
+						</goals>
 
-        sampleQiEntityMessageRepository.save(sampleQiEntityMessage1);
+						<configuration>
+							<rules>
+								<rule> 
+									<limits> 
+										<limit>
+											<counter>COMPLEXITY</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>0.04</minimum> 
+										</limit> 
+									</limits> 
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>com.github.spotbugs</groupId>
+				<artifactId>spotbugs-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
 
-        sampleRenewalCycle1 = new RenewalCycle();
-        sampleRenewalCycle1.setRenewalCycleId("9");
-        sampleRenewalCycle1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
-        sampleRenewalCycle1.setUpdatedById("012345678901234567890123456789012345");
-        sampleRenewalCycleRepository.save(sampleRenewalCycle1);
+	<dependencyManagement>
+		<dependencies>
+		    <dependency>
+				<groupId>jakarta.servlet</groupId>
+				<artifactId>jakarta.servlet-api</artifactId>
+				<version>${jakarta-servlet-api.version}</version>
+				<scope>provided</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-starter-validation</artifactId>
+				<version>3.4.2</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-properties-migrator</artifactId>
+				<version>3.4.2</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.commons</groupId>
+				<artifactId>commons-lang3</artifactId>
+				<version>${org.apache.commons.commons-lang3.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>irs.fatca.qi</groupId>
+				<artifactId>irs-fatca-qi-repository</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>irs.fatca.qi</groupId>
+				<artifactId>irs-fatca-qi-strategy</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>irs.fatca.qi</groupId>
+				<artifactId>irs-fatca-qi-core</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>irs.fatca.qi</groupId>
+				<artifactId>irs-fatca-qi-domain</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>irs.fatca.qi</groupId>
+				<artifactId>irs-fatca-qi-ui-services</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>gov.irs.fatca.registration</groupId>
+				<artifactId>fi-reg-service</artifactId>
+				<version>2.0</version>
+			</dependency>
+			<dependency>
+				<groupId>com.oracle</groupId>
+				<artifactId>ojdbc8</artifactId>
+				<version>18.3.0.0</version>
+			</dependency>
+			<dependency>
+				<groupId>javax.el</groupId>
+				<artifactId>javax.el-api</artifactId>
+				<version>3.0.0</version>
+			</dependency>
+			<dependency>
+				<groupId>jakarta.mail</groupId>
+				<artifactId>jakarta.mail-api</artifactId>
+				<version>2.1.3</version>
+			</dependency>
+			<dependency>
+				<groupId>wsdl4j</groupId>
+				<artifactId>wsdl4j</artifactId>
+				<version>1.6.3</version>
+			</dependency>
+			<dependency>
+				<groupId>commons-discovery</groupId>
+				<artifactId>commons-discovery</artifactId>
+				<version>0.5</version>
+			</dependency>
+			<dependency>
+				<groupId>commons-codec</groupId>
+				<artifactId>commons-codec</artifactId>
+				<version>1.18.0</version>
+			</dependency>
+			<dependency>
+				<groupId>javax.xml</groupId>
+				<artifactId>jaxrpc-api</artifactId>
+				<version>1.1</version>
+			</dependency>
+			<dependency>
+				<groupId>javax.xml</groupId>
+				<artifactId>jaxrpc</artifactId>
+				<version>1.1</version>
+			</dependency>
+			<dependency>
+				<groupId>jakarta.servlet</groupId>
+				<artifactId>jakarta.servlet-api</artifactId>
+				<version>6.0.0</version>
+				<scope>provided</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.owasp</groupId>
+				<artifactId>dependency-check-maven</artifactId>
+				<version>${org.owasp.maven-version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.github.springtestdbunit</groupId>
+				<artifactId>spring-test-dbunit</artifactId>
+				<version>1.3.0</version>
+			</dependency>
+			<dependency>
+				<groupId>org.dbunit</groupId>
+				<artifactId>dbunit</artifactId>
+				<version>3.0.0</version>
+			</dependency>
+			<dependency>
+				<groupId>org.thymeleaf</groupId>
+				<artifactId>thymeleaf</artifactId>
+				<version>3.1.3.RELEASE</version>
+			</dependency>
+			<dependency>
+				<groupId>org.thymeleaf</groupId>
+				<artifactId>thymeleaf-spring6</artifactId>
+				<version>3.1.3.RELEASE</version>
+			</dependency>
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-databind</artifactId>
+				<version>2.18.3</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-starter-mail</artifactId>
+				<version>3.4.2</version>
+			</dependency>
+			<dependency>
+				<groupId>org.owasp.esapi</groupId>
+				<artifactId>esapi</artifactId>
+				<version>2.7.0.0</version>
+				<classifier>jakarta</classifier>
+				<exclusions>
+					<exclusion>
+						<groupId>org.bouncycastle</groupId>
+						<artifactId>bcprov-jdk15on</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>xerces</groupId>
+						<artifactId>xercesImpl</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>commons-beanutils</groupId>
+						<artifactId>commons-beanutils</artifactId>
+					</exclusion>
+				</exclusions>
+			</dependency>
+			<dependency>
+				<groupId>commons-beanutils</groupId>
+				<artifactId>commons-beanutils</artifactId>
+				<version>1.11.0</version>
+			</dependency>
+			<dependency>
+				<groupId>xerces</groupId>
+				<artifactId>xercesImpl</artifactId>
+				<version>${xercesImpl.version}</version>
+			</dependency>			
+			<dependency>
+				<groupId>org.hamcrest</groupId>
+				<artifactId>hamcrest-library</artifactId>
+				<scope>test</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+	<properties>
+		<java-version>17</java-version>
+		<jakarta-servlet-api.version>6.0.0</jakarta-servlet-api.version><!--Updated w/Spring Core 3.4.2 -->
+		<timestamp>${maven.build.timestamp}</timestamp>
+		<maven.build.timestamp.format>yyyy-MM-dd HH:mm</maven.build.timestamp.format>
+		<prop.file.dir.name>deployment/property_files</prop.file.dir.name>
+		<script.dir>deployment/scripts</script.dir>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<spotbugs-version>4.9.3</spotbugs-version>
+		<org.apache.maven.jxr-version>2.5</org.apache.maven.jxr-version>
+		<pmd-version>3.4</pmd-version>
+		<sonar-version>3.3.0.603</sonar-version>
+		<oracle-version>11.2.0.4</oracle-version>
+		<org.jacoco-version>0.8.13</org.jacoco-version>
+		<argLine> -Xmx2048m </argLine>
+		<!-- sets the agent property in the case that the code quality profile
+			is not set -->
+		<!--tar.long.file.mode>gnu</tar.long.file.mode -->
+		<tar.long.file.mode>posix</tar.long.file.mode>
 
-        renewalCycleMessagePk1 = new RenewalCycleMessagePK();
-        renewalCycleMessagePk1.setMessage(sampleQiEntityMessage1);
-        renewalCycleMessagePk1.setRenewalCycle(sampleRenewalCycle1);
+		<com.checkstyle-version>5.0</com.checkstyle-version>
+		<!-- maven plugin versions -->
+		<org.apache.maven.surefire-version>3.5.3</org.apache.maven.surefire-version>
+		<org.apache.maven.failsafe-version>2.18.1</org.apache.maven.failsafe-version>
+		<org.apache.maven.javadoc-version>2.10.4</org.apache.maven.javadoc-version>
+		<org.apache.maven.compiler-version>3.6.0</org.apache.maven.compiler-version>
 
-        sampleRenewalCycleMessage1 = new RenewalCycleMessage();
-        sampleRenewalCycleMessage1.setRenewalCycleMessagePK(renewalCycleMessagePk1);
-        sampleRenewalCycleMessage1.setUpdateTs(Timestamp.valueOf(LocalDateTime.now()));
-        sampleRenewalCycleMessage1.setUpdatedById("012345678901234567890123456789012345");
-        sampleRenewalCycleMessageRepository.save(sampleRenewalCycleMessage1);
+		<versions-maven-plugin-version>2.0</versions-maven-plugin-version>
+		<log4j2.version>2.19.0</log4j2.version>
+		<batik-css.version>1.14</batik-css.version>
+		<commons-fileupload.version>1.6.0</commons-fileupload.version>
+		<commons-io.version>2.19.0</commons-io.version>
+		<xalan.version>2.7.2</xalan.version>
+		<xercesImpl.version>2.12.2</xercesImpl.version>
+		<!-- Dependency versions -->
+		<org.apache.commons.commons-lang3.version>3.4</org.apache.commons.commons-lang3.version>
 
-    }
+		<skip.integration.tests>true</skip.integration.tests>
+		<maven.compiler.release>11</maven.compiler.release>
+		<nexus.staging.stageBuild>true</nexus.staging.stageBuild>
+		<nexus.staging.profileId>fd21d8f0b24ba</nexus.staging.profileId>
+		<nexus.staging.url>http://vl2smemappcssr1.dstest.irsnet.gov:8081/nexus</nexus.staging.url>
+		<nexus.staging.repo.dir>bin/nexus-staging</nexus.staging.repo.dir>
+		<nexus.staging.user>my0UrdSR</nexus.staging.user>
+		<nexus.staging.pswd>DPpxoCH/9TGVYlGd2gItdPNAvqXOp+X08xUbwFKvDRAY</nexus.staging.pswd>
+		<thymeleaf-extras-java8time.version>3.0.0.RELEASE</thymeleaf-extras-java8time.version>
+		<jaxws-ri.version>2.3.2</jaxws-ri.version>
+		<jakarta.xml.ws-api.version>3.0.0</jakarta.xml.ws-api.version>
+		<jakarta.jws-api.version>3.0.0</jakarta.jws-api.version>
+		<jaxws-rt.version>3.0.0</jaxws-rt.version>
+		<jaxws-tools.version>3.0.0</jaxws-tools.version>
+		<spring-security.version>6.5.0</spring-security.version>
+	</properties>
 
-    @AfterEach
-    public void tearDown() throws Exception {
+	<profiles>
+		<!-- The code quality profile may be removed later as Sonarcube should
+			be able to do this work without the need for specific pom configuration -->
+		<profile>
+			<id>code-quality</id>
+			<activation>
+				<property>
+					<name>code.quality</name>
+				</property>
+			</activation>
 
-        sampleRenewalCycleMessageRepository.delete(sampleRenewalCycleMessage1);
+			<!-- Changes/overrides start here -->
+			<reporting>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-pmd-plugin</artifactId>
+						<configuration>
+							<linkXref>true</linkXref>
+							<sourceEncoding>utf-8</sourceEncoding>
+							<minimumTokens>100</minimumTokens>
+							<targetJdk>{java-version}</targetJdk>
+							<excludes>
+								<!-- <exclude>**/*Bean.java</exclude>
+								<exclude>**/generated/*.java</exclude> -->
+							</excludes>
+							<excludeRoots>
+								<excludeRoot>target/generated-sources/stubs</excludeRoot>
+							</excludeRoots>
+						</configuration>
+					</plugin>
+					<plugin>
+						<groupId>com.github.spotbugs</groupId>
+						<artifactId>spotbugs-maven-plugin</artifactId>
+					</plugin>
+					<plugin>
+						<groupId>org.jacoco</groupId>
+						<artifactId>jacoco-maven-plugin</artifactId>
+					</plugin>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-jxr-plugin</artifactId>
+					</plugin>
 
-        sampleQiEntityMessageRepository.delete(sampleQiEntityMessage1);
-        sampleQiEntityRepository.delete(sampleQiEntity1);
-        sampleRenewalCycleRepository.delete(sampleRenewalCycle1);
-    }
+				</plugins>
+			</reporting>
+			<dependencyManagement>
+				<dependencies>
+				</dependencies>
+			</dependencyManagement>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.jacoco</groupId>
+						<artifactId>jacoco-maven-plugin</artifactId>
+						<!-- If you want reports going to standard location
+						comment out these
+							two configuration lines. -->
+						<configuration>
+							<destFile>
+								${project.build.directory}/coverage-reports/jacoco-ut.exec</destFile>
+							<!--<dataFile>${project.build.directory}/coverage-reports/jacoco-ut.exec</dataFile> -->
+						</configuration>
+						<executions>
+							<execution>
+								<id>default-prepare-agent</id>
+								<goals>
+									<goal>prepare-agent</goal>
+								</goals>
+							</execution>
+							<execution>
+								<id>default-report</id>
+								<phase>prepare-package</phase>
+								<goals>
+									<goal>report</goal>
+								</goals>
+							</execution>
+							<execution>
+								<id>default-check</id>
+								<goals>
+									<goal>check</goal>
+								</goals>
 
-    @Disabled
-    @Test
-    public void testSave() {
-    	fail("Not right, I shouldn't even run");
-        List<RenewalCycleMessage> resultList = sampleRenewalCycleMessageRepository.findAll();
+								<configuration>
+									<rules>
+										<rule> <limits> <limit>
+										<counter>COMPLEXITY</counter>
+										<value>COVEREDRATIO</value>
+											<minimum>0.01</minimum> </limit> </limits> </rule>
+									</rules>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>com.github.spotbugs</groupId>
+						<artifactId>spotbugs-maven-plugin</artifactId>
+						<version>${spotbugs-version}</version>
+						<configuration>
+							<effort>Max</effort>
+							<threshold>Low</threshold>
+							<xmlOutput>true</xmlOutput>
+							<failOnError>false</failOnError>
+						</configuration>
+						<executions>
+							<execution>
+								<goals>
+									<goal>check</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+		<!-- The code.security profile was separated out because its can be
+		brittle
+			breaking the build when downloading updates. Seemingly randomly. Until this
+			is resolved, we wanted to make it optional. -->
+		<!-- 		to run, use command 'mvn -Powasp -DskipTests
+		-DskipProvidedScope=true verify'	 -->
 
-        assertEquals(1, resultList.size());
-    }
+		<profile>
+			<id>local</id>
+			<activation>
+				<activeByDefault>false</activeByDefault>
+				<property>
+					<name>spring.profiles.active</name>
+					<value>local</value>
+				</property>
+			</activation>
+		</profile>
 
-    @Disabled
-    @Test
-    public void testFindByEntityId() {
-        List<RenewalCycleMessage> resultList = sampleRenewalCycleMessageRepository
-                .findByEntityId(sampleQiEntity1.getQiEntityId());
-        assertEquals(1, resultList.size());
-    }
+		<profile>
+			<id>owasp</id>
+			<activation>
+				<activeByDefault>false</activeByDefault>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.owasp</groupId>
+						<artifactId>dependency-check-maven</artifactId>
+						<version>6.5.0</version>
+						<configuration>
+							<nspAnalyzerEnabled>false</nspAnalyzerEnabled>
+						</configuration>
+						<executions>
+							<execution>
+								<goals>
+									<goal>check</goal>
+								</goals>
+							</execution>
+						</executions>
+						<dependencies>
+							<dependency>
+								<groupId>org.owasp</groupId>
+								<artifactId>dependency-check-maven</artifactId>
+								<version>6.5.0</version>
+							</dependency>
+						</dependencies>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
 
-}
+		<profile>
+			<id>nexus</id>
+			<activation>
+				<property>
+					<name>nexus.staging.stageBuild</name>
+					<value>true</value>
+				</property>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<artifactId>maven-dependency-plugin</artifactId>
+						<executions>
+							<execution>
+								<phase>install</phase>
+								<goals>
+									<goal>copy-dependencies</goal>
+								</goals>
+								<configuration>
+									<outputDirectory>${project.build}</outputDirectory>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+
+
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-deploy-plugin</artifactId>
+						<configuration>
+							<skip>false</skip>  <!-- Turn off default Maven deploy -->
+						</configuration>
+					</plugin>
+					<plugin>
+						<groupId>org.sonatype.plugins</groupId>
+						<artifactId>nexus-staging-maven-plugin</artifactId>
+						<version>1.4.8</version>
+						<extensions>true</extensions>
+						<executions>
+							<execution>
+								<id>deploy-staging</id>
+								<phase>deploy</phase>  <!-- Use Nexus staging for
+								deploy phase -->
+								<goals>
+									<goal>deploy</goal>
+								</goals>
+							</execution>
+						</executions>
+						<configuration>
+							<serverId>Staging_Nexus</serverId>
+							<nexusUrl>${nexus.staging.url}</nexusUrl>
+							<!--  Use specific Nexus Staging Profile Unique id!  -->
+							<stagingProfileId>${nexus.staging.profileId}</stagingProfileId>
+							<skipStagingRepositoryClose>false</skipStagingRepositoryClose>
+							<stagingDescription>RTC Build Label:
+								${project.groupId}
+								Build Definition ID: ${project.version} </stagingDescription>
+							<description>Deployment Staging to Nexus</description>
+							<tags>
+								<localUsername>${env.USERNAME}</localUsername>
+								<javaVersion>${java-version}</javaVersion>
+								<TrackBuildID>${TrackBuildID}</TrackBuildID>
+							</tags>
+							<skipRemoteStaging>false</skipRemoteStaging>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+</project>
