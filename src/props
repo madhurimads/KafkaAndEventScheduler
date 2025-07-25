@@ -1,159 +1,445 @@
-spring.jpa.hibernate.ddl-auto=validate
-spring.h2.console.enabled=false
-spring.jpa.hibernate.naming.physical-strategy=org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
-spring.jpa.hibernate.naming.implicit-strategy=org.hibernate.boot.model.naming.ImplicitNamingStrategyLegacyJpaImpl
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
 
-# This little guys is interesting.  This is the default but being explicit to make folks aware.
-server.error.whitelabel.enabled=false
+	<parent>
+		<groupId>irs.fatca.qi</groupId>
+		<artifactId>irs-fatca-qi</artifactId>
+		<version>3.2.1</version>
+	</parent>
 
-server.servlet-path=/*
+	<artifactId>irs-fatca-qi-ui</artifactId>
+	<packaging>war</packaging>
 
-#logging.level.root=debug
-endpoints.enabled=false
-endpoints.mappings.enabled=true
-db.usage.enabled=true
+	<name>irs-fatca-qi-ui</name>
+	<description>Starter for using Spring Boot's Actuator which provides production
+		ready features to help you monitor and manage your application</description>
+	<url>http://projects.spring.io/spring-boot/</url>
+	<organization>
+		<name>Pivotal Software, Inc.</name>
+		<url>http://www.spring.io</url>
+	</organization>
 
-cron.reset.sequence=0 0 0 1 1 ?
+	<properties>
+		<artifact.final.name>fatca-qi-ui</artifact.final.name>
+		<start-class>gov.irs.fatca.qi.main.FatcaQiUiMain</start-class>
+		<build.package.exclusions>
+			**/classes/templates/,
+			**/application.properties, 
+			**/module.xml,
+			**/tomcat*.jar,
+			**/log4j2.xml
+		</build.package.exclusions>
+	</properties>
+	<dependencies>
+	<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-tomcat</artifactId>
+			<scope>provided</scope>
+			<!--QI-QUEST <exclusions>
+					<exclusion>
+						<groupId>org.apache.tomcat.embed</groupId>
+						<artifactId>tomcat-embed-core</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>org.apache.tomcat.embed</groupId>
+						<artifactId>tomcat-embed-websocket</artifactId>
+					</exclusion>
+			</exclusions>-->
+	</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+			<exclusions>
+					<exclusion>
+						<groupId>org.apache.tomcat.embed</groupId>
+						<artifactId>tomcat-embed-core</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>org.springframework.boot</groupId>
+						<artifactId>spring-boot-starter-tomcat</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-cache</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter</artifactId>
+			<exclusions>
+				<exclusion>
+					<groupId>org.springframework.boot</groupId>
+					<artifactId>spring-boot-starter-logging</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+				<exclusions>
+				<exclusion>
+					<groupId>org.springframework.boot</groupId>
+					<artifactId>spring-boot-starter-logging</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency> 
+			<groupId>org.springframework.boot</groupId> 
+			<artifactId>spring-boot-starter-thymeleaf</artifactId> 
+		</dependency>
+		<dependency>
+			<groupId>org.thymeleaf</groupId>
+			<artifactId>thymeleaf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.thymeleaf</groupId>
+			<artifactId>thymeleaf-spring6</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-log4j2</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-hateoas</artifactId>
+				<exclusions>
+				<exclusion>
+					<groupId>org.springframework.boot</groupId>
+					<artifactId>spring-boot-starter-logging</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-actuator</artifactId>
+				<exclusions>
+				<exclusion>
+					<groupId>org.springframework.boot</groupId>
+					<artifactId>spring-boot-starter-logging</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+				<exclusions>
+				<exclusion>
+					<groupId>org.springframework.boot</groupId>
+					<artifactId>spring-boot-starter-logging</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-crypto</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>irs.fatca.qi</groupId>
+			<artifactId>irs-fatca-qi-strategy</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>irs.fatca.qi</groupId>
+			<artifactId>irs-fatca-qi-ui-services</artifactId>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.thymeleaf.extras</groupId>
+			<artifactId>thymeleaf-extras-java8time</artifactId>
+			<version>${thymeleaf-extras-java8time.version}</version>
+		</dependency>
 
-cron.evict.cache=*/60 * * * * *
+		<dependency>
+			<groupId>org.hibernate.validator</groupId>
+			<artifactId>hibernate-validator</artifactId>
+			<version>8.0.2.Final</version>
+		</dependency>
 
-logging.config=classpath:log4j2.xml
+		<dependency>
+			<groupId>commons-codec</groupId>
+			<artifactId>commons-codec</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>javax.xml</groupId>
+			<artifactId>jaxrpc-api</artifactId>
+		</dependency>
 
-flyway.enabled=false
+		<dependency>
+			<groupId>javax.xml</groupId>
+			<artifactId>jaxrpc</artifactId>
+		</dependency>
+		<dependency>
+    			<groupId>org.owasp.esapi</groupId>
+    			<artifactId>esapi</artifactId>
+    			<classifier>jakarta</classifier>
+    	</dependency>	
+    	<dependency>
+			<groupId>xerces</groupId>
+			<artifactId>xercesImpl</artifactId>
+		</dependency>	
+		<dependency>
+				<groupId>jakarta.servlet</groupId>
+				<artifactId>jakarta.servlet-api</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>commons-discovery</groupId>
+			<artifactId>commons-discovery</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>wsdl4j</groupId>
+			<artifactId>wsdl4j</artifactId>
+		</dependency>
 
-confirmation.start=QI
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+		</dependency>
+		<dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+        </dependency>
+        <dependency>
+		    <groupId>com.fasterxml.jackson.core</groupId>
+		    <artifactId>jackson-annotations</artifactId>
+		</dependency>
+	</dependencies>
 
-screening.admin=Screening Admin
+	<profiles>
+		<!-- Profile for managing the build to exclude new development -->
+		<profile>
+			<id>build-maintenance</id>
+			<activation>
+				<property>
+					<name>build-type</name>
+					<value>maintenance</value>
+				</property>
+			</activation>
+			<properties>
+				<build.package.exclusions>
+					**/classes/templates/,
+					**/application.properties, **/module.xml,
+					**/tomcat*.jar,
+					**/log4j2.xml,
+					**/certification/
+				</build.package.exclusions>
+			</properties>
+		</profile>
 
-#snapshot-strategy
-snapshot.strategy.enabled=true
+		<profile>
+			<id>standard</id>
+			<activation>
+				<activeByDefault>true</activeByDefault>
+			</activation>
 
-saas.src.addr.header=X-Forwarded-For
-saas.system.string=FATCAQI
-saas.user.tax.period.format=yyyyMM
-saas.external.user.type.string=REGT
-saas.admin.user.type.string=IRSEE
-saas.external.user.event.type.string=USER
-saas.admin.user.event.type.string=ADMIN
-saas.seid.user.length=5
-saas.default.tin.string=000000000
-saas.user.id.max.length=10
-saas.success.return.code=00
-saas.failure.return.code=01
-saas.default.src.address=0.0.0.0
-saas.event.id.entity.disassociation=FQIENTDISASSOC
-saas.event.id.entity.cert.submit=FATCA_QI_CERT_SUBMIT
-saas.event.id.cert.override=FATCA_QI_CERT_OVR
-saas.event.id.cert.appr=FATCA_QI_CERT_APPR
-saas.event.id.cert.reject=FATCA_QI_CERT_REJECT
-saas.event.id.ccgcompentity.submit=FATCA_QI_CCG_BECOME
-saas.event.id.ccgcompentity.update=FATCA_QI_CCG_MODIFY
-saas.event.id.ccgcompentity.terminate=FATCA_QI_CCG_TERMN
-saas.event.id.ccgcompentity.approve=FATCA_QI_CCG_APPR
-saas.event.id.ccgcompentity.reject=FATCA_QI_CCG_REJECT
-saas.event.id.cert.extendduedate=FATCA_QI_CERT_EXT
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<executions>
+							<execution>
+								<phase>process-resources</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+								<configuration>
+									<target>
+										<copy file="src/main/resources/application-remote.properties" 
+											tofile="src/main/resources/application.properties"
+											overwrite="true" />
+										<copy file="src/main/resources/log4j2-remote.xml" 
+											tofile="src/main/resources/log4j2.xml"
+											overwrite="true" />
+										<copy file="src/main/webapp/WEB-INF/jboss-web-remote.xml" 
+											tofile="src/main/webapp/WEB-INF/jboss-web.xml"
+											overwrite="true" />
+										<delete file="src/main/resources/log4j2.component.properties" />
+									</target>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
 
-search.limit.count=500
+		<profile>
+			<id>local</id>
+			<activation>
+				<property>
+					<name>spring.profiles.active</name>
+					<value>local</value>
+				</property>
+			</activation>
+			<properties>
+				<build.package.exclusions>
+					**/classes/templates/,
+					**/module.xml,
+					**/tomcat*.jar,
+				</build.package.exclusions>
+			</properties>
 
-#disable/enable individual service
-#dal.ws.enabled=true -- should be removed?
-saas.service.enabled=true
-get.profile.service.enabled=true
-submit.form.service.enabled=true
-get.form.service.enabled=true
-get.message.service.enabled=true
-get.submission.history.service.enabled=true
-update.message.service.enabled=true
-update.submission.status.service.enabled=true
-update.entity.status.service.enabled=true
-upload.file.service.enabled=true
-download.file.service.enabled=true
-get.dropdown.list.service.enabled=true
-delete.branch.service.enabled=true
-delete.pai.service.enabled=true
-delete.file.service.enabled=true
-check.user.existence.service.enabled=true
-create.new.entity.account.service.enabled=true
-save.fireg.data.service.enabled=true
-submission.queue.service.enabled=true
-get.contact.info.service.enabled=true
-update.contact.info.service.enabled=true
-update.submission.info.service.enabled=true
-update.entity.submission.info.service.enabled=true
-check.user.login.service.enabled=true
-mark.user.logout.service.enabled=true
-get.admin.entity.info.service.enabled=true
-admin.search.service.enabled=true
-termination.service.enabled=true
-get.submission.stage.service.enabled=true
-release.login.locks.service.enabled=true
-get.login.indicator.service.enabled=true
-get.branch.info.service.enabled = true
-update.branch.info.service.enabled = true
-manage.ein.service.enabled=true
-admin.update.entity.service.enabled=true
-aop.after.log.enabled=false
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<executions>
+							<execution>
+								<phase>process-resources</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+								<configuration>
+									<target>
+										<copy file="deployment/property_files/local/log4j2.component.properties" 
+											tofile="src/main/resources/log4j2.component.properties"
+											overwrite="true" />
+										<copy file="deployment/property_files/local/application-local.properties" 
+											tofile="src/main/resources/application.properties"
+											overwrite="true" />
+										<copy file="src/main/resources/log4j2-local.xml" 
+											tofile="src/main/resources/log4j2.xml"
+											overwrite="true" />
+										<copy file="src/main/webapp/WEB-INF/jboss-web-local.xml" 
+											tofile="src/main/webapp/WEB-INF/jboss-web.xml"
+											overwrite="true" />
+									</target>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+		<profile>
+			<id>qi</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<executions>
+							<execution>
+								<phase>process-resources</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+								<configuration>
+									<tasks>
+										<delete dir="gov/irs/qi/main">
+											<include name="**/*.xml" />
+											<include name="**/*.properties" />
+										</delete>
+										<copy todir="gov/irs/qi/main">
+											<fileset dir="src/main/resources">
+												<include name="module.xml" />
+												<include name="application.properties" />
+											</fileset>
+										</copy>
+										<replace file="gov/irs/qi/main/application.properties"
+											token="@version@" value="${project.version}" />
+										<replace file="gov/irs/qi/main/application.properties"
+											token="@timestamp@" value="${maven.build.timestamp}" />
+									</tasks>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
-#Query to keep database connection alive
+	<build>
+		<finalName>${artifact.final.name}</finalName>
+		<plugins>
+			<plugin>
+				<groupId>com.google.code.maven-replacer-plugin</groupId>
+				<artifactId>maven-replacer-plugin</artifactId>
+				<version>1.3.2</version>
+				<executions>
+					<execution>
+						<!-- the replace should happen before the app is packaged -->
+						<phase>prepare-package</phase>
+						<goals>
+							<goal>replace</goal>
+						</goals>
+					</execution>
+				</executions>
 
-#JNDI datasource
-enable.jndi.ds=true
-qi.ofac.jndi.ds=java:jboss/fatcaQIAppDS
-qi.doc.jndi.ds=java:jboss/fatcaQIAppDocDS
-qi.app.jndi.ds=java:jboss/fatcaQIAppDS
+				<configuration>
+					<includes>
+						<!-- replace the token in this file -->
+						<include>src/main/resources/application.properties</include>
+					</includes>
+					<regex>false</regex>
+					<!-- the name of the token to replace -->
+					<token>PROJECT_VERSION_TOKEN</token>
+					<!-- replace it with the maven project version -->
+					<value>${project.version}</value>
+				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-war-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>default-war</id>
+						<goals>
+							<goal>war</goal>
+						</goals>
+						<configuration>
+							<packagingExcludes>${build.package.exclusions}</packagingExcludes>
+							<archiveClasses>false</archiveClasses>
+							<archive>
+								<manifest>
+									<addClasspath>true</addClasspath>
+									<classpathPrefix>lib/</classpathPrefix>
+									<addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+								</manifest>
+								<manifestEntries>
+									<Build-Time>${maven.build.timestamp}</Build-Time>
+								</manifestEntries>
+							</archive>
+							<!-- <warName>fatca-qi</warName> -->
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>distro-assembly</id>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+						<configuration>
+							<descriptors>
+								<descriptor>src/assembly/assembly.xml</descriptor>
+							</descriptors>
+							<appendAssemblyId>false</appendAssemblyId>
+							<finalName>${artifact.final.name}</finalName>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
 
-#Used by the application
-spring.datasource.hikari.driver-class-name=oracle.jdbc.driver.OracleDriver
-spring.jpa.generate-ddl=false
-spring.jpa.properties.hibernate.current_session_context_class=org.springframework.orm.hibernate5.SpringSessionContext
-spring.jpa.show-sql= true
-spring.jpa.properties.org.hibernate.flushMode=COMMIT
-
-spring.datasource.testWhileIdle=true
-spring.datasource.validationQuery=SELECT 1 from dual;
-
-#doc schema
-doc.datasource.hikari.driver-class-name=oracle.jdbc.driver.OracleDriver
-
-doc.datasource.testWhileIdle=true
-doc.datasource.validationQuery=SELECT 1 from dual;
-
-#OFAC schema
-ofac.datasource.hikari.driver-class-name=oracle.jdbc.driver.OracleDriver
-
-ofac.datasource.testWhileIdle=true
-ofac.datasource.validationQuery=SELECT 1 from dual;
-
-spring.jpa.database-platform=org.hibernate.dialect.OracleDialect
-
-#Email notification
-spring.mail.host=mail-relay.enterprise.irs.gov
-spring.mail.port=25
-#Turn on if smtp server has SSL and use username and password
-spring.mail.properties.mail.smtp.ssl.enable=false
-#spring.mail.username=
-#spring.mail.password=
-
-email.enabled=true
-email.from=FATCA-QI-donot-reply@irs.gov
-email.subject=Your QI, WP or WT account update
-email.text=You have a new message on your Qualified Intermediary (QI), Withholding Foreign Partnership (WP), Withholding Foreign Trust (WT) System message board. You must log into your QI, WP or WT account for   to read the message.
-email.text.beginning=You have a new message on your Qualified Intermediary (QI), Withholding Foreign Partnership (WP), Withholding Foreign Trust (WT) System message board. You must log into your QI, WP or WT account for
-email.text.end=to read the message.
-
-#DAL validation error messages
-non.exist.entity.error=Entity ID does not exist in the system
-non.exist.ein.error=EIN does not exist in the system
-invalid.entity.ein.combination.error=Invalid Entity ID/EIN combination
-ccg.entity.type.mismatch.error=The entity cannot be added because it must be the same type as the compliance entity of the CCG
-add.active.member.to.ccg.error=The entity cannot be added because it is already a member of a CCG
-invalid.entity.status.error=Invalid entity status of entity being added - Must be "Approved," "Terminated - Voluntary," or "Terminated - by IRS"
-invalid.cert.status.error=The entity cannot be added because it has already submitted a certification for the corresponding certification period
-invalid.ccg.cert.status.error=The entity cannot be added because the CCG has a certification in accepted, submitted, or amended status.
-approve.active.member.ccg.request.error=The compliance request cannot be approved because the entity is already a member of a CCG
-invalid.entity.status.for.ccg.request.approval.error=The compliance request cannot be approved because the entity's entity status must be "Approved," "Terminated - Voluntary," or "Terminated - by IRS"
-invalid.cert.status.for.ccg.request.approval.error=The compliance request cannot be approved because the entity is included in a submitted certification for the corresponding certification period
-
-#Minimum Date to receive an Extended Due Date
-extended.due.date.cutoff=05/03/
-spring.main.allow-circular-references=true
+</project>
